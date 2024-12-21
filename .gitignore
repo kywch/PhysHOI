@@ -1,0 +1,8 @@
+.pixi
+physhoi/data/models
+*.egg-info
+__pycache__/
+build
+output
+logs
+runs

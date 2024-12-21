@@ -41,8 +41,8 @@ from torch import optim
 import torch 
 from torch import nn
 
-import learning.replay_buffer as replay_buffer
-import learning.common_agent as common_agent
+from . import replay_buffer
+from . import common_agent
 
 from tensorboardX import SummaryWriter
 
@@ -455,4 +455,7 @@ class PhysHOIAgent(common_agent.CommonAgent):
         self.writer.add_scalar('info/e_clip', self.e_clip * train_info['lr_mul'][-1], frame)
         self.writer.add_scalar('info/clip_frac', torch_ext.mean_list(train_info['actor_clip_frac']).item(), frame)
         self.writer.add_scalar('info/kl', torch_ext.mean_list(train_info['kl']).item(), frame)
+        return
+
+    def _amp_debug(self, info):
         return

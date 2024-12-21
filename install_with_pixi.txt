@@ -1,0 +1,13 @@
+pixi shell
+
+cd ../isaacgym/python
+pip install -e .
+
+cd ../PhysHOI/rl_games
+pip install -e .
+
+pixi run test_deps
+
+
+-----------------------
+

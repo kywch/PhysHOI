@@ -31,13 +31,15 @@ import numpy as np
 import torch
 import glob, os, random
 
-from isaacgym import gymtorch
+# from isaacgym import gymtorch
+import gymtorch
+
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
 
-from utils import torch_utils
+from physhoi.utils import torch_utils
 
-from env.tasks.base_task import BaseTask
+from physhoi.env.tasks.base_task import BaseTask
 
 
 PERTURB_OBJS = [

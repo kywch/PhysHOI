@@ -6,11 +6,13 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 from gym import spaces
-
-from isaacgym import gymtorch
-from isaacgym.torch_utils import to_torch
 import torch
 import numpy as np
+
+#from isaacgym import gymtorch
+import gymtorch
+
+from isaacgym.torch_utils import to_torch
 
 
 # VecEnv Wrapper for RL training
