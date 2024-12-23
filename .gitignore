@@ -3,6 +3,7 @@ physhoi/data/models
 *.egg-info
 __pycache__/
 build
+*.so
 output
 logs
 runs
