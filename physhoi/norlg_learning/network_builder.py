@@ -1,9 +1,17 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
 # from rl_games.algos_torch.network_builder import NetworkBuilder
 
 from physhoi.norlg_learning.utils import shape_whc_to_cwh
+
+
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    """CleanRL's default layer initialization"""
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
 
 
 class A2CNetworkBuilder:  # (NetworkBuilder):
@@ -17,6 +25,64 @@ class A2CNetworkBuilder:  # (NetworkBuilder):
         assert self.params is not None, "params is not set"
         net = A2CNetworkBuilder.Network(self.params, **kwargs)
         return net
+
+    class SimpleNetwork(nn.Module):
+        def __init__(self, params, **kwargs):
+            actions_num = kwargs.pop('actions_num')
+            input_shape = kwargs.pop('input_shape')
+            hidden1, hidden2 = 1024, 512
+
+            super().__init__()
+
+            # Replace self.load(params)
+            self.is_continuous = True
+            self.units = params['mlp']['units']
+            self.space_config = params['space']['continuous']
+
+            # Fix the network, to be the same as the original
+            # mlp:
+            #   units: [1024, 512]
+            #   activation: relu
+            input_size = input_shape[0]
+            out_size = self.units[-1]
+
+            # TODO: remove these
+            self.actor_cnn = nn.Sequential()
+            self.critic_cnn = nn.Sequential()
+
+            # Separate actor and critic networks
+            self.actor_mlp = nn.Sequential(
+                layer_init(nn.Linear(input_size, hidden1)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden1, hidden2)),
+                nn.ReLU(),
+            )
+
+            self.mu = nn.Linear(out_size, actions_num)
+            self.mu_act = nn.Identity()  # self.activations_factory.create(self.space_config['mu_activation']) 
+            self.sigma_act = nn.Identity()  # self.activations_factory.create(self.space_config['sigma_activation']) 
+
+            # if self.space_config['fixed_sigma']:
+            #     self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=True, dtype=torch.float32), requires_grad=True)
+            #     nn.init.constant_(self.sigma, self.space_config['sigma_init']['val'])
+            # else:
+            #     self.sigma = nn.Linear(out_size, actions_num)
+            #     nn.init.constant_(self.sigma.weight, self.space_config['sigma_init']['val'])
+
+            # Critic network
+            self.critic_mlp = nn.Sequential(
+                layer_init(nn.Linear(input_size, hidden1)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden1, hidden2)),
+                nn.ReLU(),
+            )
+
+            self.value = nn.Linear(out_size, 1)
+            self.value_act = nn.ReLU()  # self.activations_factory.create(self.value_activation)
+
+        def forward(self, obs_dict):
+            raise NotImplementedError
+
 
     class Network(nn.Module):  #(NetworkBuilder.BaseNetwork):
         def __init__(self, params, **kwargs):
@@ -89,6 +155,7 @@ class A2CNetworkBuilder:  # (NetworkBuilder):
             if self.separate:
                 self.critic_mlp = self._build_sequential_mlp(**mlp_args)
 
+            # Adding the action/value head to the network
             self.value = nn.Linear(out_size, self.value_size)
             self.value_act = nn.ReLU()  # self.activations_factory.create(self.value_activation)
 
@@ -365,28 +432,43 @@ class A2CNetworkBuilder:  # (NetworkBuilder):
             norm_only_first_layer=False, 
             norm_func_name = None
         ):
-            # TODO: simplify the args
             print('build mlp:', input_size)
-            in_size = input_size
-            layers = []
-            need_norm = True
-            for unit in units:
-                # layers.append(dense_func(in_size, unit))  # dense_func = nn.Linear
-                # layers.append(self.activations_factory.create(activation))  # activation = relu
-                layers.append(nn.Linear(in_size, unit))
-                layers.append(nn.ReLU())
+            
+            # Fix the network, to be the same as the original
+            # mlp:
+            #   units: [1024, 512]
+            #   activation: relu
+            return nn.Sequential(
+                nn.Linear(input_size, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 512),
+                nn.ReLU(),
+            )
 
-                if norm_only_first_layer and norm_func_name is not None:
-                   need_norm = False 
-                if not need_norm:
-                    continue
+            # NOTE: consider adding a layernorm
+            # Learn to walk in 20 min: https://arxiv.org/abs/2208.07860
+            # Used LayerNorm to regularize the critic
 
-                if norm_func_name == 'layer_norm':
-                    layers.append(nn.LayerNorm(unit))
-                elif norm_func_name == 'batch_norm':
-                    layers.append(nn.BatchNorm1d(unit))
+            # in_size = input_size
+            # layers = []
+            # need_norm = True
+            # for unit in units:
+            #     # layers.append(dense_func(in_size, unit))  # dense_func = nn.Linear
+            #     # layers.append(self.activations_factory.create(activation))  # activation = relu
+            #     layers.append(nn.Linear(in_size, unit))
+            #     layers.append(nn.ReLU())
 
-                in_size = unit
+            #     if norm_only_first_layer and norm_func_name is not None:
+            #        need_norm = False 
+            #     if not need_norm:
+            #         continue
 
-            return nn.Sequential(*layers)
+            #     if norm_func_name == 'layer_norm':
+            #         layers.append(nn.LayerNorm(unit))
+            #     elif norm_func_name == 'batch_norm':
+            #         layers.append(nn.BatchNorm1d(unit))
+
+            #     in_size = unit
+
+            # return nn.Sequential(*layers)
 

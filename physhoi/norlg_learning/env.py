@@ -6,7 +6,7 @@ from physhoi.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
 
 from rl_games.common import env_configurations, vecenv
 
-# vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
 
 
 def create_rlgpu_env(args, cfg, cfg_train, **kwargs):

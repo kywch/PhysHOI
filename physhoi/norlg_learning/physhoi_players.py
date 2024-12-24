@@ -104,7 +104,7 @@ class PhysHOIPlayerContinuous:
         config = {
             'actions_num' : self.actions_num,
             'input_shape' : obs_shape,
-            'num_seqs' : self.num_agents
+            # 'num_seqs' : self.num_agents  # used for rnn, so not needed
         } 
 
         # self._build_net(net_config)

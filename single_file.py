@@ -7,12 +7,9 @@ import isaacgym
 import torch
 
 from rl_games.common import env_configurations
-from rl_games.algos_torch.models import ModelA2CContinuousLogStd
 
 from physhoi.utils.config import set_np_formatting, get_args, load_cfg
 from physhoi.learning import physhoi_agent
-from physhoi.learning import physhoi_network_builder
-
 from physhoi.learning import physhoi_players as org_physhoi_players
 
 from physhoi.norlg_learning import physhoi_players

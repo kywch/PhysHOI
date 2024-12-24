@@ -2,30 +2,78 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from physhoi.norlg_learning.network_builder import A2CNetworkBuilder
 
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    """CleanRL's default layer initialization"""
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
 
-class PhysHOINetworkBuilder(A2CNetworkBuilder):
+class PhysHOINetworkBuilder:
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        return
+        self.params = None
+
+    def load(self, params):
+        self.params = params
 
     def build(self, name, **kwargs):
+        assert self.params is not None, "params is not set"
         net = PhysHOINetworkBuilder.Network(self.params, **kwargs)
         return net
 
-    class Network(A2CNetworkBuilder.Network):
+    class Network(nn.Module):
         def __init__(self, params, **kwargs):
-            super().__init__(params, **kwargs)
+            actions_num = kwargs.pop('actions_num')
+            input_shape = kwargs.pop('input_shape')
+            hidden1, hidden2 = 1024, 512
 
-            if self.is_continuous:
-                if (not self.space_config['learn_sigma']):
-                    actions_num = kwargs.get('actions_num')
-                    # sigma_init = self.init_factory.create(**self.space_config['sigma_init'])
-                    self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=False, dtype=torch.float32), requires_grad=False)
-                    # sigma_init(self.sigma)
-                    nn.init.constant_(self.sigma, self.space_config['sigma_init']['val'])
-            return
+            super().__init__()
+
+            # Replace self.load(params)
+            self.is_continuous = True
+            self.units = params['mlp']['units']
+            self.space_config = params['space']['continuous']
+
+            # Fix the network, to be the same as the original
+            # mlp:
+            #   units: [1024, 512]
+            #   activation: relu
+            input_size = input_shape[0]
+            out_size = self.units[-1]
+
+            # TODO: remove these
+            self.actor_cnn = nn.Sequential()
+            self.critic_cnn = nn.Sequential()
+
+            # Separate actor and critic networks
+            self.actor_mlp = nn.Sequential(
+                layer_init(nn.Linear(input_size, hidden1)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden1, hidden2)),
+                nn.ReLU(),
+            )
+
+            self.mu = nn.Linear(out_size, actions_num)
+            self.mu_act = nn.Identity()  # self.activations_factory.create(self.space_config['mu_activation']) 
+            self.sigma_act = nn.Identity()  # self.activations_factory.create(self.space_config['sigma_activation']) 
+
+            if self.space_config['learn_sigma']:
+                self.sigma = nn.Linear(out_size, actions_num)
+                nn.init.constant_(self.sigma.weight, self.space_config['sigma_init']['val'])
+            else:
+                self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=False, dtype=torch.float32), requires_grad=False)
+                nn.init.constant_(self.sigma, self.space_config['sigma_init']['val'])
+
+            # Critic network
+            self.critic_mlp = nn.Sequential(
+                layer_init(nn.Linear(input_size, hidden1)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden1, hidden2)),
+                nn.ReLU(),
+            )
+
+            self.value = nn.Linear(out_size, 1)
+            self.value_act = nn.ReLU()  # self.activations_factory.create(self.value_activation)
 
         def forward(self, obs_dict):
             obs = obs_dict['obs']
@@ -43,21 +91,20 @@ class PhysHOINetworkBuilder(A2CNetworkBuilder):
             a_out = a_out.contiguous().view(a_out.size(0), -1)
             a_out = self.actor_mlp(a_out)
                      
-            if self.is_discrete:
-                logits = self.logits(a_out)
-                return logits
+            # if self.is_discrete:
+            #     logits = self.logits(a_out)
+            #     return logits
 
-            if self.is_multi_discrete:
-                logits = [logit(a_out) for logit in self.logits]
-                return logits
+            # if self.is_multi_discrete:
+            #     logits = [logit(a_out) for logit in self.logits]
+            #     return logits
 
             if self.is_continuous:
                 mu = self.mu_act(self.mu(a_out))
-                if self.space_config['fixed_sigma']:
-                    sigma = mu * 0.0 + self.sigma_act(self.sigma)
-                else:
+                if self.space_config['learn_sigma']:
                     sigma = self.sigma_act(self.sigma(a_out))
-
+                else:
+                    sigma = mu * 0.0 + self.sigma_act(self.sigma)
                 return mu, sigma
             return
 
@@ -87,10 +134,10 @@ class PhysHOIModelBuilder:
             self.a2c_network = a2c_network
 
         def is_rnn(self):
-            return self.a2c_network.is_rnn()
+            return False  # self.a2c_network.is_rnn()
             
         def get_default_rnn_state(self):
-            return self.a2c_network.get_default_rnn_state()
+            return None  # self.a2c_network.get_default_rnn_state()
 
         def forward(self, input_dict):
             is_train = input_dict.get('is_train', True)
