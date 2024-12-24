@@ -7,99 +7,27 @@ import isaacgym
 import torch
 
 from rl_games.common import env_configurations
-from rl_games.algos_torch import torch_ext
-from rl_games.common.algo_observer import AlgoObserver
 from rl_games.algos_torch.models import ModelA2CContinuousLogStd
 
 from physhoi.utils.config import set_np_formatting, get_args, load_cfg
 from physhoi.learning import physhoi_agent
-from physhoi.learning import physhoi_players
 from physhoi.learning import physhoi_network_builder
 
-from env import create_rlgpu_env
+from physhoi.learning import physhoi_players as org_physhoi_players
 
+from physhoi.norlg_learning import physhoi_players
+from physhoi.norlg_learning.utils import RLGPUAlgoObserver, DefaultRewardsShaper
+
+from physhoi.norlg_learning.env import create_rlgpu_env
+from physhoi.norlg_learning.network import PhysHOINetworkBuilder, PhysHOIModelBuilder
 
 RUN_EVAL = True
 
 
-class RLGPUAlgoObserver(AlgoObserver):
-    def __init__(self, use_successes=True):
-        self.use_successes = use_successes
-        return
-
-    def after_init(self, algo):
-        self.algo = algo
-        self.consecutive_successes = torch_ext.AverageMeter(1, self.algo.games_to_track).to(self.algo.ppo_device)
-        self.writer = self.algo.writer
-        return
-
-    def process_infos(self, infos, done_indices):
-        if isinstance(infos, dict):
-            if (self.use_successes == False) and 'consecutive_successes' in infos:
-                cons_successes = infos['consecutive_successes'].clone()
-                self.consecutive_successes.update(cons_successes.to(self.algo.ppo_device))
-            if self.use_successes and 'successes' in infos:
-                successes = infos['successes'].clone()
-                self.consecutive_successes.update(successes[done_indices].to(self.algo.ppo_device))
-        return
-
-    def after_clear_stats(self):
-        self.mean_scores.clear()
-        return
-
-    def after_print_stats(self, frame, epoch_num, total_time):
-        if self.consecutive_successes.current_size > 0:
-            mean_con_successes = self.consecutive_successes.get_mean()
-            self.writer.add_scalar('successes/consecutive_successes/mean', mean_con_successes, frame)
-            self.writer.add_scalar('successes/consecutive_successes/iter', mean_con_successes, epoch_num)
-            self.writer.add_scalar('successes/consecutive_successes/time', mean_con_successes, total_time)
-        return
-
-
-class DefaultRewardsShaper:
-    def __init__(self, scale_value = 1, shift_value = 0, min_val=-np.inf, max_val=np.inf, is_torch=True):
-        self.scale_value = scale_value
-        self.shift_value = shift_value
-        self.min_val = min_val
-        self.max_val = max_val
-        self.is_torch = is_torch
-
-    def __call__(self, reward):
-        
-        reward = reward + self.shift_value
-        reward = reward * self.scale_value
- 
-        if self.is_torch:
-            import torch
-            reward = torch.clamp(reward, self.min_val, self.max_val)
-        else:
-            reward = np.clip(reward, self.min_val, self.max_val)
-        return reward
-
-
-class PhysHOIModelBuilder:
-    def __init__(self, network_builder):
-        self.network_builder = network_builder
-
-    def build(self, config):
-        net = self.network_builder.build(None, **config)
-        for name, _ in net.named_parameters():
-            print(name)
-        return PhysHOIModelBuilder.Network(net)
-
-    class Network(ModelA2CContinuousLogStd.Network):
-        def __init__(self, a2c_network):
-            super().__init__(a2c_network)
-            return
-
-        def forward(self, input_dict):
-            result = super().forward(input_dict)
-            return result    
-
-
 # Replace rlgames' torch_runner and factories
 class Runner:
-    def __init__(self, algo_observer=None):
+    def __init__(self, env_creator, algo_observer=None):
+        self.env_creator = env_creator
         self.algo_observer = algo_observer
         torch.backends.cudnn.benchmark = True
 
@@ -139,7 +67,8 @@ class Runner:
         self.config['network'] = self.model
 
     def make_model_builder(self, params):
-        network_builder = physhoi_network_builder.PhysHOIBuilder()
+        # network_builder = physhoi_network_builder.PhysHOIBuilder()
+        network_builder = PhysHOINetworkBuilder()
         network_builder.load(params["network"])
         model_builder = PhysHOIModelBuilder(network_builder)
         return model_builder
@@ -163,7 +92,8 @@ class Runner:
 
     # "player" seems to be inference-only mode
     def create_player(self):
-        return physhoi_players.PhysHOIPlayerContinuous(self.config)
+        # return org_physhoi_players.PhysHOIPlayerContinuous(self.config)
+        return physhoi_players.PhysHOIPlayerContinuous(self.config, self.env_creator)
 
     def run_train(self):
         print('Started to train')
@@ -225,12 +155,15 @@ if __name__ == '__main__':
     cfg, cfg_train, logdir = load_cfg(args)
     cfg['env']['motion_file'] = args.motion_file
 
+    env_creator = lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs)
+
     # Create and register the env creator with args, cfg, cfg_train
     env_configurations.register('rlgpu', {
-        'env_creator': lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs),
-        'vecenv_type': 'RLGPU'})
+        'env_creator': env_creator,
+        'vecenv_type': 'RLGPU'}
+    )
 
-    runner = Runner()
+    runner = Runner(env_creator)
     runner.load(cfg_train)
     runner.reset()
 

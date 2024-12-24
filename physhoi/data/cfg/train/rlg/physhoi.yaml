@@ -13,10 +13,10 @@ params:
 
     space:
       continuous:
-        mu_activation: None
-        sigma_activation: None
-        mu_init:
-          name: default
+        # mu_activation: None
+        # sigma_activation: None
+        # mu_init:
+        #   name: default
         sigma_init:
           name: const_initializer
           val: -2.9

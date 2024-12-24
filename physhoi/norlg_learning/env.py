@@ -1,14 +1,13 @@
-from physhoi.utils.config import parse_sim_params
+import numpy as np
 
+from physhoi.utils.config import parse_sim_params
 from physhoi.env.tasks.physhoi import PhysHOI_BallPlay
 from physhoi.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
 
-import numpy as np
-
 from rl_games.common import env_configurations, vecenv
 
+# vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
 
-vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
 
 def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
 
@@ -45,7 +44,8 @@ def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
     return env
 
 
-class RLGPUEnv(vecenv.IVecEnv):
+# If there are missing methods, see rl_games/common/ivecenv.py: class IVecEnv
+class RLGPUEnv:
     def __init__(self, config_name, num_actors, **kwargs):
         self.env = env_configurations.configurations[config_name]['env_creator'](**kwargs)
         # pdb.set_trace()
@@ -93,3 +93,23 @@ class RLGPUEnv(vecenv.IVecEnv):
 
         return info
 
+
+def get_env_info(env):
+    result_shapes = {}
+    result_shapes['observation_space'] = env.observation_space
+    result_shapes['action_space'] = env.action_space
+    result_shapes['agents'] = 1
+    result_shapes['value_size'] = 1
+    if hasattr(env, "get_number_of_agents"):
+        result_shapes['agents'] = env.get_number_of_agents()
+    '''
+    if isinstance(result_shapes['observation_space'], gym.spaces.dict.Dict):
+        result_shapes['observation_space'] = observation_space['observations']
+    if isinstance(result_shapes['observation_space'], dict):
+        result_shapes['observation_space'] = observation_space['observations']
+        result_shapes['state_space'] = observation_space['states']
+    '''
+    if hasattr(env, "value_size"):    
+        result_shapes['value_size'] = env.value_size
+    print(result_shapes)
+    return result_shapes
