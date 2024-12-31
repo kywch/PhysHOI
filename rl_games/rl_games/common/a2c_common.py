@@ -61,7 +61,7 @@ class A2CBase:
         self.config = config
 
         self.algo_observer = config['features']['observer']
-        self.algo_observer.before_init(base_name, config, self.experiment_name)
+        # self.algo_observer.before_init(base_name, config, self.experiment_name)
 
         self.multi_gpu = config.get('multi_gpu', False)
         self.rank = 0

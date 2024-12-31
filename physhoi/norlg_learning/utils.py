@@ -1,32 +1,49 @@
+import gym
 import numpy as np
 import torch
 import torch.nn as nn
 
 
-class AlgoObserver:
-    def __init__(self):
-        pass
+numpy_to_torch_dtype_dict = {
+    np.dtype('bool')       : torch.bool,
+    np.dtype('uint8')      : torch.uint8,
+    np.dtype('int8')       : torch.int8,
+    np.dtype('int16')      : torch.int16,
+    np.dtype('int32')      : torch.int32,
+    np.dtype('int64')      : torch.int64,
+    np.dtype('float16')    : torch.float16,
+    np.dtype('float32')    : torch.float32,
+    np.dtype('float64')    : torch.float64,
+    np.dtype('complex64')  : torch.complex64,
+    np.dtype('complex128') : torch.complex128,
+}
 
-    def before_init(self, base_name, config, experiment_name):
-        pass
+def shape_whc_to_cwh(shape):
+    #if len(shape) == 2:
+    #    return (shape[1], shape[0])
+    if len(shape) == 3:
+        return (shape[2], shape[0], shape[1])
+    
+    return shape
 
-    def after_init(self, algo):
-        pass
-
-    def process_infos(self, infos, done_indices):
-        pass
-
-    def after_steps(self):
-        pass
-
-    def after_print_stats(self, frame, epoch_num, total_time):
-        pass
+#(-1, 1) -> (low, high)
+def rescale_actions(low, high, action):
+    d = (high - low) / 2.0
+    m = (high + low) / 2.0
+    scaled_action = action * d + m
+    return scaled_action
 
 
-class RLGPUAlgoObserver(AlgoObserver):
+class RLGPUAlgoObserver:
     def __init__(self, use_successes=True):
         self.use_successes = use_successes
-        return
+        self.consecutive_successes = None
+
+    def set_writer(self, writer):
+        self.writer = writer
+
+    def set_consecutive_successes(self, consecutive_successes):
+        self.consecutive_successes = consecutive_successes
 
     def after_init(self, algo):
         self.algo = algo
@@ -36,7 +53,7 @@ class RLGPUAlgoObserver(AlgoObserver):
 
     def process_infos(self, infos, done_indices):
         if isinstance(infos, dict):
-            if (self.use_successes == False) and 'consecutive_successes' in infos:
+            if not self.use_successes and 'consecutive_successes' in infos:
                 cons_successes = infos['consecutive_successes'].clone()
                 self.consecutive_successes.update(cons_successes.to(self.algo.ppo_device))
             if self.use_successes and 'successes' in infos:
@@ -45,7 +62,7 @@ class RLGPUAlgoObserver(AlgoObserver):
         return
 
     def after_clear_stats(self):
-        self.mean_scores.clear()
+        self.consecutive_successes.clear()
         return
 
     def after_print_stats(self, frame, epoch_num, total_time):
@@ -59,7 +76,7 @@ class RLGPUAlgoObserver(AlgoObserver):
 
 class AverageMeter(nn.Module):
     def __init__(self, in_shape, max_size):
-        super(AverageMeter, self).__init__()
+        super().__init__()
         self.max_size = max_size
         self.current_size = 0
         self.register_buffer("mean", torch.zeros(in_shape, dtype = torch.float32))
@@ -109,7 +126,7 @@ class DefaultRewardsShaper:
 
 class RunningMeanStd(nn.Module):
     def __init__(self, insize, epsilon=1e-05, per_channel=False, norm_only=False):
-        super(RunningMeanStd, self).__init__()
+        super().__init__()
         print('RunningMeanStd: ', insize)
         self.insize = insize
         self.epsilon = epsilon
@@ -186,7 +203,7 @@ class RunningMeanStd(nn.Module):
 class RunningMeanStdObs(nn.Module):
     def __init__(self, insize, epsilon=1e-05, per_channel=False, norm_only=False):
         assert(insize is dict)
-        super(RunningMeanStdObs, self).__init__()
+        super().__init__()
         self.running_mean_std = nn.ModuleDict({
             k : RunningMeanStd(v, epsilon, per_channel, norm_only) for k,v in insize.items()
         })
@@ -196,18 +213,92 @@ class RunningMeanStdObs(nn.Module):
         return res
 
 
-def shape_whc_to_cwh(shape):
-    #if len(shape) == 2:
-    #    return (shape[1], shape[0])
-    if len(shape) == 3:
-        return (shape[2], shape[0], shape[1])
-    
-    return shape
+class ExperienceBuffer:
+    '''
+    More generalized than replay buffers.
+    Implemented for on-policy algos
+    '''
+    def __init__(self, env_info, algo_info, device, aux_tensor_dict=None):
+        self.env_info = env_info
+        self.algo_info = algo_info
+        self.device = device
 
+        self.num_agents = env_info.get('agents', 1)
+        self.action_space = env_info['action_space']
+        
+        self.num_actors = algo_info['num_actors']
+        self.horizon_length = algo_info['horizon_length']
+        self.obs_base_shape = (self.horizon_length, self.num_agents * self.num_actors)
+        self.state_base_shape = (self.horizon_length, self.num_actors)
 
-#(-1, 1) -> (low, high)
-def rescale_actions(low, high, action):
-    d = (high - low) / 2.0
-    m = (high + low) / 2.0
-    scaled_action = action * d + m
-    return scaled_action
+        self.actions_shape = (self.action_space.shape[0],) 
+        self.actions_num = self.action_space.shape[0]
+        self.is_continuous = True
+
+        self.tensor_dict = {}
+        self._init_from_env_info(self.env_info)
+
+        self.aux_tensor_dict = aux_tensor_dict
+        if self.aux_tensor_dict is not None:
+            self._init_from_aux_dict(self.aux_tensor_dict)
+
+    def _init_from_env_info(self, env_info):
+        obs_base_shape = self.obs_base_shape
+        self.tensor_dict['obses'] = self._create_tensor_from_space(env_info['observation_space'], obs_base_shape)
+        
+        val_space = gym.spaces.Box(low=0, high=1, shape=(env_info.get('value_size',1),))
+        self.tensor_dict['rewards'] = self._create_tensor_from_space(val_space, obs_base_shape)
+        self.tensor_dict['values'] = self._create_tensor_from_space(val_space, obs_base_shape)
+        self.tensor_dict['neglogpacs'] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=(), dtype=np.float32), obs_base_shape)
+        self.tensor_dict['dones'] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=(), dtype=np.uint8), obs_base_shape)
+        self.tensor_dict['actions'] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=self.actions_shape, dtype=np.float32), obs_base_shape)
+        self.tensor_dict['mus'] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=self.actions_shape, dtype=np.float32), obs_base_shape)
+        self.tensor_dict['sigmas'] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=self.actions_shape, dtype=np.float32), obs_base_shape)
+
+    def _init_from_aux_dict(self, tensor_dict):
+        obs_base_shape = self.obs_base_shape
+        for k,v in tensor_dict.items():
+            self.tensor_dict[k] = self._create_tensor_from_space(gym.spaces.Box(low=0, high=1,shape=(v), dtype=np.float32), obs_base_shape)
+
+    def _create_tensor_from_space(self, space, base_shape):       
+        if type(space) is gym.spaces.Box:
+            dtype = numpy_to_torch_dtype_dict[space.dtype]
+            return torch.zeros(base_shape + space.shape, dtype= dtype, device = self.device)
+
+        raise ValueError(f"Unsupported space type: {type(space)}")
+
+    def update_data(self, name, index, val):
+        if type(val) is dict:
+            for k,v in val.items():
+                self.tensor_dict[name][k][index,:] = v
+        else:
+            self.tensor_dict[name][index,:] = val
+
+    def get_transformed(self, transform_op):
+        res_dict = {}
+        for k, v in self.tensor_dict.items():
+            if type(v) is dict:
+                transformed_dict = {}
+                for kd,vd in v.items():
+                    transformed_dict[kd] = transform_op(vd)
+                res_dict[k] = transformed_dict
+            else:
+                res_dict[k] = transform_op(v)
+        
+        return res_dict
+
+    def get_transformed_list(self, transform_op, tensor_list):
+        res_dict = {}
+        for k in tensor_list:
+            v = self.tensor_dict.get(k)
+            if v is None:
+                continue
+            if type(v) is dict:
+                transformed_dict = {}
+                for kd,vd in v.items():
+                    transformed_dict[kd] = transform_op(vd)
+                res_dict[k] = transformed_dict
+            else:
+                res_dict[k] = transform_op(v)
+        
+        return res_dict

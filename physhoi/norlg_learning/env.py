@@ -1,12 +1,8 @@
 import numpy as np
 
-from physhoi.utils.config import parse_sim_params
 from physhoi.env.tasks.physhoi import PhysHOI_BallPlay
 from physhoi.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
-
-from rl_games.common import env_configurations, vecenv
-
-vecenv.register('RLGPU', lambda config_name, num_actors, **kwargs: RLGPUEnv(config_name, num_actors, **kwargs))
+from physhoi.utils.config import parse_sim_params
 
 
 def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
@@ -44,10 +40,9 @@ def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
     return env
 
 
-# If there are missing methods, see rl_games/common/ivecenv.py: class IVecEnv
-class RLGPUEnv:
-    def __init__(self, config_name, num_actors, **kwargs):
-        self.env = env_configurations.configurations[config_name]['env_creator'](**kwargs)
+class RLGPUEnvWrapper:
+    def __init__(self, env):
+        self.env = env
         # pdb.set_trace()
         self.use_global_obs = (self.env.num_states > 0)
 
@@ -55,7 +50,25 @@ class RLGPUEnv:
         self.full_state["obs"] = self.reset()
         if self.use_global_obs:
             self.full_state["states"] = self.env.get_state()
-        return
+
+        # method mapping
+        self.get_number_of_agents = self.env.get_number_of_agents
+
+    @property
+    def observation_space(self):
+        return self.env.observation_space
+
+    @property
+    def amp_observation_space(self):
+        return self.env.amp_observation_space
+
+    @property
+    def action_space(self):
+        return self.env.action_space
+
+    @property
+    def value_size(self):
+        return self.env.value_size
 
     def step(self, action):
         next_obs, reward, is_done, info = self.env.step(action)
@@ -92,7 +105,6 @@ class RLGPUEnv:
             print(info['action_space'], info['observation_space'])
 
         return info
-
 
 def get_env_info(env):
     result_shapes = {}

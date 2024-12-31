@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import os
 import time
 
 import gym
@@ -35,18 +36,19 @@ from .env import get_env_info
 from .utils import RunningMeanStd, shape_whc_to_cwh, rescale_actions
 
 
-class PhysHOIPlayerContinuous:
-    def __init__(self, config, env_creator):
+class PhysHOIAgent:
+    def __init__(self, config, env):
         # from rl_games.common.player import BasePlayer
         # BasePlayer.__init__(self, config)
         self.config = config
-        self.env_name = self.config['env_name']
-        self.env_config = self.config.get('env_config', {})
+        # self.env_name = self.config['env_name']
+        # self.env_config = self.config.get('env_config', {})
         self.env_info = self.config.get('env_info')
         self.clip_actions = config.get('clip_actions', True)
 
+        self.env = env
         if self.env_info is None:
-            self.env = env_creator(**self.env_config)  # self.create_env()
+            # self.env = env_creator(**self.env_config)  # self.create_env()
             self.env_info = get_env_info(self.env)
 
         self.value_size = self.env_info.get('value_size', 1)
@@ -63,16 +65,18 @@ class PhysHOIPlayerContinuous:
 
         self.states = None
         self.player_config = self.config.get('player', {})
-        self.use_cuda = True
         self.batch_size = 1
-        self.has_central_value = self.config.get('central_value_config') is not None
-        self.device_name = self.config.get('device_name', 'cuda')
+        # self.has_central_value = self.config.get('central_value_config') is not None
         self.render_env = self.player_config.get('render', False)
         self.games_num = self.player_config.get('games_num', 15)
         self.is_determenistic = self.player_config.get('determenistic', True)
         self.print_stats = self.player_config.get('print_stats', True)
         self.render_sleep = self.player_config.get('render_sleep', 0.002)
         self.max_steps = 108000 // 4
+
+        # TODO: check device in config. For now, there is no device nor device_name
+        self.use_cuda = True
+        self.device_name = self.config.get('device_name', 'cuda')
         self.device = torch.device(self.device_name)
 
         # from physhoi.learning import common_player
@@ -82,10 +86,14 @@ class PhysHOIPlayerContinuous:
         self._setup_action_space()
         self.mask = [False]
 
-        self.normalize_input = self.config['normalize_input']
+        self.normalize_input = self.config.get('normalize_input', False)
+        # CHECK ME: normalize_value is not used in PhysHOI checkpoints
+        self.normalize_value = False  # self.config.get('normalize_value', False)
         self._build_model()
 
+        # Adversarial Motion Prior (AMP)-related
         self._normalize_amp_input = config.get('normalize_amp_input', True)
+        self._amp_input_mean_std = None
         if self._normalize_amp_input:
             assert hasattr(self, 'env'), "env is not set"
             config['amp_input_shape'] = self.env.amp_observation_space.shape
@@ -96,7 +104,6 @@ class PhysHOIPlayerContinuous:
         self.actions_num = self.action_space.shape[0] 
         self.actions_low = torch.from_numpy(self.action_space.low.copy()).float().to(self.device)
         self.actions_high = torch.from_numpy(self.action_space.high.copy()).float().to(self.device)
-        return
 
     def _build_model(self):
         # net_config = self._build_net_config()
@@ -112,16 +119,51 @@ class PhysHOIPlayerContinuous:
         self.model.to(self.device)
         self.model.eval()
         self.is_rnn = self.model.is_rnn()
+        assert not self.is_rnn, "PhysHOI is not supported with RNN"
 
         if self.normalize_input:
             self.running_mean_std = RunningMeanStd(obs_shape).to(self.device)
             self.running_mean_std.eval() 
 
-    def get_batch_size(self, obses):
-        obs_shape = self.obs_shape
-        assert len(obses.size()) > len(obs_shape), "obses must be batched"
-        self.batch_size = obses.size()[0]
-        return self.batch_size
+        # if self.normalize_value:
+        #     self.value_mean_std = RunningMeanStd((self.value_size,)).to(self.device)
+        #     self.value_mean_std.eval()
+
+    def set_eval(self):
+        self.model.eval()
+        if self.normalize_input:
+            self.running_mean_std.eval()
+        if self._normalize_amp_input:
+            self._amp_input_mean_std.eval()
+
+    def set_train(self):
+        self.model.train()
+        if self.normalize_input:
+            self.running_mean_std.train()
+        if self._normalize_amp_input:
+            self._amp_input_mean_std.train()
+
+    def get_model_weights(self):
+        state_dict = {}
+        state_dict['model'] = self.model.state_dict()
+        if self.normalize_input:
+            state_dict['running_mean_std'] = self.running_mean_std.state_dict()
+        if self._normalize_amp_input:
+            state_dict['amp_input_mean_std'] = self._amp_input_mean_std.state_dict()
+        return state_dict
+
+    def set_model_weights(self, state_dict):
+        self.model.load_state_dict(state_dict['model'])
+        if self.normalize_input:
+            self.running_mean_std.load_state_dict(state_dict['running_mean_std'])
+        if self._normalize_amp_input:
+            self._amp_input_mean_std.load_state_dict(state_dict['amp_input_mean_std'])
+
+    def restore(self, file_path):
+        if os.path.exists(file_path):
+            print("=> loading checkpoint '{}'".format(file_path))
+            state_dict = torch.load(file_path)
+            self.set_model_weights(state_dict)
 
     def env_reset(self, env_ids=None):
         obs_torch = self.env.reset(env_ids)
@@ -129,15 +171,29 @@ class PhysHOIPlayerContinuous:
         return obs_torch
 
     def _preproc_obs(self, obs_batch):
-        if type(obs_batch) is dict:
-            for k, v in obs_batch.items():
-                obs_batch[k] = self._preproc_obs(v)
-        else:
-            if obs_batch.dtype == torch.uint8:
-                obs_batch = obs_batch.float() / 255.0
+        # if type(obs_batch) is dict:
+        #     for k, v in obs_batch.items():
+        #         obs_batch[k] = self._preproc_obs(v)
+        # else:
+        #     if obs_batch.dtype == torch.uint8:
+        #         obs_batch = obs_batch.float() / 255.0
         if self.normalize_input:
             obs_batch = self.running_mean_std(obs_batch)
         return obs_batch
+
+
+class PhysHOIPlayerContinuous(PhysHOIAgent):
+    def __init__(self, config, env_creator):
+        env_config = config.get('env_config', {})
+        env = env_creator(**env_config)
+
+        super().__init__(config, env)
+
+    def get_batch_size(self, obses):
+        obs_shape = self.obs_shape
+        assert len(obses.size()) > len(obs_shape), "obses must be batched"
+        self.batch_size = obses.size()[0]
+        return self.batch_size
 
     def get_action(self, obs_torch, is_determenistic = False):
         obs_torch = self._preproc_obs(obs_torch)
@@ -153,9 +209,6 @@ class PhysHOIPlayerContinuous:
         mu = res_dict['mus']
         action = res_dict['actions']
         
-        # Disable rnn
-        # self.states = res_dict['rnn_states']
-
         if is_determenistic:
             current_action = mu
         else:
@@ -166,11 +219,6 @@ class PhysHOIPlayerContinuous:
         
         return rescale_actions(self.actions_low, self.actions_high, torch.clamp(current_action, -1.0, 1.0))
 
-    # def env_step(self, env, actions):
-    #     # isaac gym returns torch tensors
-    #     obs, rewards, dones, infos = env.step(actions)
-    #     return obs, rewards.to(self.device), dones.to(self.device), infos
-
     def run(self):
         n_games = self.games_num
         render = self.render_env
@@ -179,28 +227,12 @@ class PhysHOIPlayerContinuous:
         sum_steps = 0
         games_played = 0
 
-        # has_masks = False
-        # has_masks_func = getattr(self.env, "has_action_mask", None) is not None
-
-        # op_agent = getattr(self.env, "create_agent", None)
-        # if op_agent:
-        #     agent_inited = True
-
-        # if has_masks_func:
-        #     has_masks = self.env.has_action_mask()
-
-        # need_init_rnn = self.is_rnn
-
         for _ in range(n_games):
             if games_played >= n_games:
                 break
 
             obs_torch = self.env_reset()
             batch_size = self.get_batch_size(obs_torch)
-
-            # if need_init_rnn:
-            #     self.init_rnn()
-            #     need_init_rnn = False
 
             cr = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
             steps = torch.zeros(batch_size, dtype=torch.float32, device=self.device)
@@ -215,13 +247,9 @@ class PhysHOIPlayerContinuous:
 
             else:
                 # inference
-                for n in range(self.max_steps):
+                for _ in range(self.max_steps):
                     obs_torch = self.env_reset(done_indices)
 
-                    # if has_masks:
-                    #     masks = self.env.get_action_mask()
-                    #     action = self.get_masked_action(obs_dict, masks, is_determenistic)
-                    # else:
                     action = self.get_action(obs_torch, is_determenistic)
 
                     """Stepping the environment"""
@@ -242,10 +270,6 @@ class PhysHOIPlayerContinuous:
                     games_played += done_count
 
                     if done_count > 0:
-                        # if self.is_rnn:
-                        #     for s in self.states:
-                        #         s[:,all_done_indices,:] = s[:,all_done_indices,:] * 0.0
-
                         cur_rewards = cr[done_indices].sum().item()
                         cur_steps = steps[done_indices].sum().item()
 
@@ -263,19 +287,6 @@ class PhysHOIPlayerContinuous:
                     done_indices = done_indices[:, 0]
 
         print(n_games, 'games played. Done.')
-        return
-    
-    def restore(self, fn):
-        if (fn != 'Base'):
-            print("=> loading checkpoint '{}'".format(fn))
-            checkpoint = torch.load(fn)
-            self.model.load_state_dict(checkpoint['model'])
-
-            if self.normalize_input:
-                self.running_mean_std.load_state_dict(checkpoint['running_mean_std'])
-
-            if self._normalize_amp_input:
-                self._amp_input_mean_std.load_state_dict(checkpoint['amp_input_mean_std'])
         return
     
     def _post_step(self, info):

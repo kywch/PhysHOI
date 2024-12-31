@@ -9,6 +9,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+
 class PhysHOINetworkBuilder:
     def __init__(self, **kwargs):
         self.params = None
@@ -30,7 +31,7 @@ class PhysHOINetworkBuilder:
             super().__init__()
 
             # Replace self.load(params)
-            self.is_continuous = True
+            # self.is_continuous = True
             self.units = params['mlp']['units']
             self.space_config = params['space']['continuous']
 
@@ -75,6 +76,8 @@ class PhysHOINetworkBuilder:
             self.value = nn.Linear(out_size, 1)
             self.value_act = nn.ReLU()  # self.activations_factory.create(self.value_activation)
 
+        # TODO: simplify below
+
         def forward(self, obs_dict):
             obs = obs_dict['obs']
             states = obs_dict.get('rnn_states', None)
@@ -99,14 +102,13 @@ class PhysHOINetworkBuilder:
             #     logits = [logit(a_out) for logit in self.logits]
             #     return logits
 
-            if self.is_continuous:
-                mu = self.mu_act(self.mu(a_out))
-                if self.space_config['learn_sigma']:
-                    sigma = self.sigma_act(self.sigma(a_out))
-                else:
-                    sigma = mu * 0.0 + self.sigma_act(self.sigma)
-                return mu, sigma
-            return
+            # if self.is_continuous:
+            mu = self.mu_act(self.mu(a_out))
+            if self.space_config['learn_sigma']:
+                sigma = self.sigma_act(self.sigma(a_out))
+            else:
+                sigma = mu * 0.0 + self.sigma_act(self.sigma)
+            return mu, sigma
 
         def eval_critic(self, obs):
             c_out = self.critic_cnn(obs)

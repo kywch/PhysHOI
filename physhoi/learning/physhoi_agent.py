@@ -228,7 +228,7 @@ class PhysHOIAgent(common_agent.CommonAgent):
         
         self.set_train()
         self.prepare_dataset(batch_dict)
-        self.algo_observer.after_steps()
+        # self.algo_observer.after_steps()
 
         if self.has_central_value:
             self.train_central_value()
@@ -397,7 +397,7 @@ class PhysHOIAgent(common_agent.CommonAgent):
         # discriminator. If the discriminator is only trained with jittery motions
         # from noisy actions, it can learn to phone in on the jitteriness to
         # differential between real and fake samples.
-        self._enable_eps_greedy = bool(config['enable_eps_greedy'])
+        self._enable_eps_greedy = bool(config.get('enable_eps_greedy', False))
         self._amp_observation_space = self.env_info['amp_observation_space']
         self._normalize_input = config.get('normalize_input', True)
         return

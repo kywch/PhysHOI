@@ -9,16 +9,19 @@ import torch
 from rl_games.common import env_configurations
 
 from physhoi.utils.config import set_np_formatting, get_args, load_cfg
-from physhoi.learning import physhoi_agent
+from physhoi.learning import physhoi_agent as org_physhoi_agent
 from physhoi.learning import physhoi_players as org_physhoi_players
+import physhoi.learning.rlgpu
 
+from physhoi.norlg_learning import physhoi_agent
 from physhoi.norlg_learning import physhoi_players
 from physhoi.norlg_learning.utils import RLGPUAlgoObserver, DefaultRewardsShaper
 
-from physhoi.norlg_learning.env import create_rlgpu_env
+from physhoi.norlg_learning.env import create_rlgpu_env, RLGPUEnvWrapper
 from physhoi.norlg_learning.network import PhysHOINetworkBuilder, PhysHOIModelBuilder
 
-RUN_EVAL = True
+RUN_EVAL = False
+RUN_RLG = False
 
 
 # Replace rlgames' torch_runner and factories
@@ -89,28 +92,36 @@ class Runner:
 
     # "player" seems to be inference-only mode
     def create_player(self):
-        # return org_physhoi_players.PhysHOIPlayerContinuous(self.config)
-        return physhoi_players.PhysHOIPlayerContinuous(self.config, self.env_creator)
+        if RUN_RLG:
+            return org_physhoi_players.PhysHOIPlayerContinuous(self.config)
+        else:
+            return physhoi_players.PhysHOIPlayerContinuous(self.config, self.env_creator)
 
     def run_train(self):
         print('Started to train')
-        if self.algo_observer is None:
-            self.algo_observer = RLGPUAlgoObserver()
-
         self.reset()
         self.load_config(self.default_config)
 
-        if 'features' not in self.config:
-            self.config['features'] = {}
-        self.config['features']['observer'] = self.algo_observer
+        if self.algo_observer is None:
+            self.algo_observer = RLGPUAlgoObserver()
+        self.config['algo_observer'] = self.algo_observer
 
-        #if 'soft_augmentation' in self.config['features']:
-        #    self.config['features']['soft_augmentation'] = SoftAugmentation(**self.config['features']['soft_augmentation'])
+        if RUN_RLG:
+            # for the org_physhoi_agent
+            self.config['features'] = {"observer": self.algo_observer}
+            agent = org_physhoi_agent.PhysHOIAgent(base_name='run', config=self.config)
 
-        agent = physhoi_agent.PhysHOIAgent(base_name='run', config=self.config)
+        else:
+            vec_env = self.env_creator()
+            vec_env = RLGPUEnvWrapper(vec_env)
+            agent = physhoi_agent.PhysHOIAgent(self.config, vec_env)
 
         if self.load_check_point and (self.load_path is not None):
             agent.restore(self.load_path)
+
+        # CHECK ME: is resume_from necessary?
+        # if agent.resume_from != 'None':
+        #     agent.restore(self.resume_from)
 
         agent.train()
 
