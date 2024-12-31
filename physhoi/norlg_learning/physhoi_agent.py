@@ -139,6 +139,7 @@ class PhysHOIAgent(physhoi_players.PhysHOIAgent):
 
         print()
 
+    # CHECK ME: is it really unwrapped?
     @property
     def unwrapped_env(self):
         return self.env.env

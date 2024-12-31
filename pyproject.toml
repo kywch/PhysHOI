@@ -27,6 +27,7 @@ setuptools = ">=75.3.0,<76"
 pre-commit = ">=3.5.0,<4"
 ruff = ">=0.6.2,<0.7"
 wandb = ">=0.16.6,<0.17"
+tyro = ">=0.8.14,<0.9"
 
 pytorch = "2.3.1"
 pytorch-cuda = "12.1"

@@ -11,7 +11,9 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "env": {
-                "LD_LIBRARY_PATH": ".pixi/envs/default/lib"
+                "LD_LIBRARY_PATH": ".pixi/envs/default/lib",
+                "CUDA_LAUNCH_BLOCKING": "1",
+                "TORCH_USE_CUDA_DSA": "1"
             }
         }
     ]

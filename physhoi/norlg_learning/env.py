@@ -68,7 +68,11 @@ class RLGPUEnvWrapper:
 
     @property
     def value_size(self):
-        return self.env.value_size
+        return 1  # self.env.value_size
+
+    @property
+    def num_envs(self):
+        return self.env.num_envs
 
     def step(self, action):
         next_obs, reward, is_done, info = self.env.step(action)

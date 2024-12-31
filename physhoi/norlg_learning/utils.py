@@ -173,19 +173,19 @@ class RunningMeanStd(nn.Module):
                                                     mean, var, input.size()[0] )
 
         # change shape
-        if self.per_channel:
-            if len(self.insize) == 3:
-                current_mean = self.running_mean.view([1, self.insize[0], 1, 1]).expand_as(input)
-                current_var = self.running_var.view([1, self.insize[0], 1, 1]).expand_as(input)
-            if len(self.insize) == 2:
-                current_mean = self.running_mean.view([1, self.insize[0], 1]).expand_as(input)
-                current_var = self.running_var.view([1, self.insize[0], 1]).expand_as(input)
-            if len(self.insize) == 1:
-                current_mean = self.running_mean.view([1, self.insize[0]]).expand_as(input)
-                current_var = self.running_var.view([1, self.insize[0]]).expand_as(input)        
-        else:
-            current_mean = self.running_mean
-            current_var = self.running_var
+        # if self.per_channel:
+        #     if len(self.insize) == 3:
+        #         current_mean = self.running_mean.view([1, self.insize[0], 1, 1]).expand_as(input)
+        #         current_var = self.running_var.view([1, self.insize[0], 1, 1]).expand_as(input)
+        #     if len(self.insize) == 2:
+        #         current_mean = self.running_mean.view([1, self.insize[0], 1]).expand_as(input)
+        #         current_var = self.running_var.view([1, self.insize[0], 1]).expand_as(input)
+        #     if len(self.insize) == 1:
+        #         current_mean = self.running_mean.view([1, self.insize[0]]).expand_as(input)
+        #         current_var = self.running_var.view([1, self.insize[0]]).expand_as(input)        
+        # else:
+        current_mean = self.running_mean
+        current_var = self.running_var
         # get output
 
         if unnorm:
@@ -200,17 +200,17 @@ class RunningMeanStd(nn.Module):
         return y
 
 
-class RunningMeanStdObs(nn.Module):
-    def __init__(self, insize, epsilon=1e-05, per_channel=False, norm_only=False):
-        assert(insize is dict)
-        super().__init__()
-        self.running_mean_std = nn.ModuleDict({
-            k : RunningMeanStd(v, epsilon, per_channel, norm_only) for k,v in insize.items()
-        })
+# class RunningMeanStdObs(nn.Module):
+#     def __init__(self, insize, epsilon=1e-05, per_channel=False, norm_only=False):
+#         assert(insize is dict)
+#         super().__init__()
+#         self.running_mean_std = nn.ModuleDict({
+#             k : RunningMeanStd(v, epsilon, per_channel, norm_only) for k,v in insize.items()
+#         })
     
-    def forward(self, input, unnorm=False):
-        res = {k : self.running_mean_std(v, unnorm) for k,v in input.items()}
-        return res
+#     def forward(self, input, unnorm=False):
+#         res = {k : self.running_mean_std(v, unnorm) for k,v in input.items()}
+#         return res
 
 
 class ExperienceBuffer:

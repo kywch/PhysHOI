@@ -629,6 +629,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
 
 
     def _load_motion(self, motion_file):
+        device = self.device
 
         # '''load HOI dataset'''
         self.num_motions = 1
@@ -637,7 +638,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
 
         loaded_dict = {}
         hoi_data = torch.load(data_path)
-        loaded_dict['hoi_data'] = hoi_data.detach().to('cuda')
+        loaded_dict['hoi_data'] = hoi_data.detach().to(device)
 
         # '''change the data framerate'''
         # NOTE: this is used for temporary testing, and is not rigorous that may yield incorrect rotations.
@@ -651,34 +652,34 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
 
         loaded_dict['root_pos'] = loaded_dict['hoi_data'][:, 0:3].clone()
         loaded_dict['root_pos_vel'] = (loaded_dict['root_pos'][1:,:].clone() - loaded_dict['root_pos'][:-1,:].clone())*self.fps_data
-        loaded_dict['root_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['root_pos_vel'].shape[-1])).to('cuda'),loaded_dict['root_pos_vel']),dim=0)
+        loaded_dict['root_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['root_pos_vel'].shape[-1])).to(device),loaded_dict['root_pos_vel']),dim=0)
 
         loaded_dict['root_rot'] = loaded_dict['hoi_data'][:, 3:6].clone()
         loaded_dict['root_rot_data'] = loaded_dict['root_rot'].clone()
         loaded_dict['root_rot_vel'] = (loaded_dict['root_rot'][1:,:].clone() - loaded_dict['root_rot'][:-1,:].clone())*self.fps_data
-        loaded_dict['root_rot_vel'] = torch.cat((torch.zeros((1, loaded_dict['root_rot_vel'].shape[-1])).to('cuda'),loaded_dict['root_rot_vel']),dim=0)
+        loaded_dict['root_rot_vel'] = torch.cat((torch.zeros((1, loaded_dict['root_rot_vel'].shape[-1])).to(device),loaded_dict['root_rot_vel']),dim=0)
         loaded_dict['root_rot'] = torch_utils.exp_map_to_quat(loaded_dict['root_rot']).clone()
 
         loaded_dict['dof_pos'] = loaded_dict['hoi_data'][:, 9:9+153].clone()
         loaded_dict['dof_pos_vel'] = (loaded_dict['dof_pos'][1:,:].clone() - loaded_dict['dof_pos'][:-1,:].clone())*self.fps_data
-        loaded_dict['dof_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['dof_pos_vel'].shape[-1])).to('cuda'),loaded_dict['dof_pos_vel']),dim=0)
+        loaded_dict['dof_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['dof_pos_vel'].shape[-1])).to(device),loaded_dict['dof_pos_vel']),dim=0)
 
         loaded_dict['body_pos'] = loaded_dict['hoi_data'][:, 162: 162+52*3].clone().view(self.max_episode_length,52,3)
         loaded_dict['key_body_pos'] = loaded_dict['body_pos'][:, self._key_body_ids, :].view(self.max_episode_length,-1).clone()
         loaded_dict['key_body_pos_vel'] = (loaded_dict['key_body_pos'][1:,:].clone() - loaded_dict['key_body_pos'][:-1,:].clone())*self.fps_data
-        loaded_dict['key_body_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['key_body_pos_vel'].shape[-1])).to('cuda'),loaded_dict['key_body_pos_vel']),dim=0)
+        loaded_dict['key_body_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['key_body_pos_vel'].shape[-1])).to(device),loaded_dict['key_body_pos_vel']),dim=0)
 
         loaded_dict['obj_pos'] = loaded_dict['hoi_data'][:, 318:321].clone()
         loaded_dict['obj_pos_vel'] = (loaded_dict['obj_pos'][1:,:].clone() - loaded_dict['obj_pos'][:-1,:].clone())*self.fps_data
         if self.init_vel:
             loaded_dict['obj_pos_vel'] = torch.cat((loaded_dict['obj_pos_vel'][:1],loaded_dict['obj_pos_vel']),dim=0)
         else:
-            loaded_dict['obj_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['obj_pos_vel'].shape[-1])).to('cuda'),loaded_dict['obj_pos_vel']),dim=0)
+            loaded_dict['obj_pos_vel'] = torch.cat((torch.zeros((1, loaded_dict['obj_pos_vel'].shape[-1])).to(device),loaded_dict['obj_pos_vel']),dim=0)
         
 
         loaded_dict['obj_rot'] = -loaded_dict['hoi_data'][:, 321:324].clone()
         loaded_dict['obj_rot_vel'] = (loaded_dict['obj_rot'][1:,:].clone() - loaded_dict['obj_rot'][:-1,:].clone())*self.fps_data
-        loaded_dict['obj_rot_vel'] = torch.cat((torch.zeros((1, loaded_dict['obj_rot_vel'].shape[-1])).to('cuda'),loaded_dict['obj_rot_vel']),dim=0)
+        loaded_dict['obj_rot_vel'] = torch.cat((torch.zeros((1, loaded_dict['obj_rot_vel'].shape[-1])).to(device),loaded_dict['obj_rot_vel']),dim=0)
         loaded_dict['obj_rot'] = torch_utils.exp_map_to_quat(-loaded_dict['hoi_data'][:, 321:324]).clone()
 
         loaded_dict['contact'] = torch.round(loaded_dict['hoi_data'][:, 330:331].clone())
@@ -1014,7 +1015,8 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
                                                                self._dof_pos, self._dof_vel, key_body_pos,
                                                                self._local_root_obs, self._root_height_obs, 
                                                                self._dof_obs_size, self._target_states,
-                                                               dof_diffvel)
+                                                               dof_diffvel,
+                                                               self.device)
         else:
             self._curr_obs[env_ids] = build_hoi_observations(self._rigid_body_pos[env_ids][:, 0, :],
                                                                    self._rigid_body_rot[env_ids][:, 0, :],
@@ -1023,7 +1025,8 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
                                                                    self._dof_pos[env_ids], self._dof_vel[env_ids], key_body_pos[env_ids],
                                                                    self._local_root_obs, self._root_height_obs, 
                                                                    self._dof_obs_size, self._target_states[env_ids],
-                                                                   dof_diffvel[env_ids])
+                                                                   dof_diffvel[env_ids],
+                                                                   self.device)
         return
 
     def _calc_perturb_times(self):
@@ -1229,10 +1232,10 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
 
 # @torch.jit.script
 def build_hoi_observations(root_pos, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, key_body_pos, 
-                           local_root_obs, root_height_obs, dof_obs_size, target_states, dof_diffvel):
+                           local_root_obs, root_height_obs, dof_obs_size, target_states, dof_diffvel, device):
 
 
-    contact = torch.zeros(key_body_pos.shape[0],1).cuda()
+    contact = torch.zeros(key_body_pos.shape[0],1).to(device)
     obs = torch.cat((root_pos, root_rot, dof_pos, dof_diffvel, target_states[:,:10], key_body_pos.contiguous().view(-1,key_body_pos.shape[1]*key_body_pos.shape[2]), contact), dim=-1)
     return obs
 
@@ -1263,7 +1266,7 @@ def compute_obj_observations(root_states, tar_states):
     return obs
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_humanoid_observations_max(body_pos, body_rot, body_vel, body_ang_vel, local_root_obs, root_height_obs, contact_forces, contact_body_ids):
     # type: (Tensor, Tensor, Tensor, Tensor, bool, bool, Tensor, Tensor) -> Tensor
     root_pos = body_pos[:, 0, :]
@@ -1456,7 +1459,7 @@ def compute_humanoid_reward(hoi_ref, hoi_obs, contact_buf, tar_contact_forces, l
     return reward
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_humanoid_reset(reset_buf, progress_buf, contact_buf, rigid_body_pos,
                            max_episode_length, enable_early_termination, termination_heights, hoi_ref, hoi_obs):
     # type: (Tensor, Tensor, Tensor, Tensor, float, bool, Tensor, Tensor, Tensor) -> Tuple[Tensor, Tensor]
