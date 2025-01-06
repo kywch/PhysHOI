@@ -551,8 +551,8 @@ class A2CBase:
         # We save it to the checkpoint to prevent overriding the "best ever" checkpoint upon experiment restart
         state['last_mean_rewards'] = self.last_mean_rewards
 
-        env_state = self.vec_env.get_env_state()
-        state['env_state'] = env_state
+        # env_state = self.vec_env.get_env_state()
+        # state['env_state'] = env_state
 
         return state
 
