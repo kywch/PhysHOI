@@ -145,7 +145,7 @@ if __name__ == '__main__':
         args.task = "PhysHOI_BallPlay"
         args.cfg_env = "physhoi/data/cfg/physhoi.yaml"
         args.cfg_train = "physhoi/data/cfg/train/rlg/physhoi.yaml"
-        args.motion_file = "physhoi/data/motions/BallPlay/toss.pt"
+        args.motion_file = "physhoi/data/motions/BallPlay/backdribble.pt"
         args.headless = True
 
     # Set the correct mode

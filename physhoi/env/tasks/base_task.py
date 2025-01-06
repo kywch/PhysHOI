@@ -28,7 +28,7 @@ class BaseTask():
         self.device_id = cfg.get("device_id", 0)
 
         self.device = "cpu"
-        if self.device_type == "cuda" or self.device_type == "GPU":
+        if self.device_type.startswith("cuda") or self.device_type == "GPU":
             self.device = "cuda" + ":" + str(self.device_id)
 
         self.headless = cfg["headless"]

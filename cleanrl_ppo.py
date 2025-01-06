@@ -38,8 +38,9 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 
 from physhoi.env.tasks.physhoi import PhysHOI_BallPlay
-from physhoi.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
-from physhoi.norlg_learning.env import RLGPUEnvWrapper
+from physhoi.env.tasks.task_wrappers import VecTaskWrapper
+# from physhoi.env.tasks.vec_task_wrappers import VecTaskPythonWrapper
+# from physhoi.norlg_learning.env import RLGPUEnvWrapper
 
 import gym
 import numpy as np
@@ -50,7 +51,7 @@ import tyro
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
-DEBUG = True
+DEBUG = False
 
 
 @dataclass
@@ -91,9 +92,9 @@ class Args:
     """the number of client threads that process env slices"""
 
     # PPO-specific arguments
-    total_timesteps: int = 30000000
+    total_timesteps: int = 100_000_000
     """total timesteps of the experiments"""
-    learning_rate: float = 2e-5
+    learning_rate: float = 2e-3
     """the learning rate of the optimizer"""
     num_envs: int = 2048 if not DEBUG else 32
     """the number of parallel game environments"""
@@ -107,7 +108,7 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 4
+    update_epochs: int = 6
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -117,7 +118,7 @@ class Args:
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.0
     """coefficient of the entropy"""
-    vf_coef: float = 2
+    vf_coef: float = 5
     """coefficient of the value function"""
     max_grad_norm: float = 1
     """the maximum norm for the gradient clipping"""
@@ -192,13 +193,22 @@ def make_env(args):
     )
 
     # add wrappers
-    envs = VecTaskPythonWrapper(task, rl_device, clip_observations=np.inf, clip_actions=1.0)
+
+    # envs = VecTaskPythonWrapper(task, rl_device, clip_observations=np.inf, clip_actions=1.0)
+    # print('num_envs: {:d}'.format(envs.num_envs))
+    # print('num_actions: {:d}'.format(envs.num_actions))
+    # print('num_obs: {:d}'.format(envs.num_obs))
+    # print('num_states: {:d}'.format(envs.num_states))
+
+    # envs = RLGPUEnvWrapper(envs)
+
+    envs = VecTaskWrapper(task, rl_device, clip_observations=np.inf, clip_actions=1.0)
     print('num_envs: {:d}'.format(envs.num_envs))
     print('num_actions: {:d}'.format(envs.num_actions))
     print('num_obs: {:d}'.format(envs.num_obs))
     print('num_states: {:d}'.format(envs.num_states))
 
-    envs = RLGPUEnvWrapper(envs)
+
     envs = RecordEpisodeStatisticsTorch(envs, torch.device(rl_device))
     envs.single_action_space = envs.action_space
     envs.single_observation_space = envs.observation_space
@@ -215,13 +225,19 @@ class RecordEpisodeStatisticsTorch(gym.Wrapper):
         self.episode_returns = None
         self.episode_lengths = None
 
-    def reset(self, **kwargs):
-        observations = super().reset(**kwargs)
-        self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
-        self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
-        self.returned_episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
-        self.returned_episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
-        return observations
+    def reset(self, env_ids=None):
+        obs = self.env.reset(env_ids)
+        if env_ids is None:
+            self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+            self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
+            self.returned_episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+            self.returned_episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
+        else:
+            self.episode_returns[env_ids] = 0
+            self.episode_lengths[env_ids] = 0
+            self.returned_episode_returns[env_ids] = 0
+            self.returned_episode_lengths[env_ids] = 0
+        return obs
 
     def step(self, action):
         observations, rewards, dones, infos = super().step(action)
@@ -357,8 +373,15 @@ if __name__ == "__main__":
 
         for step in range(0, args.num_steps):
             global_step += args.num_envs
-            obs[step] = next_obs
             dones[step] = next_done
+
+            # Reset the done envs, and update the obs
+            done_indices = torch.nonzero(next_done).squeeze(-1)
+            if len(done_indices) > 0:
+                next_obs = envs.reset(done_indices)
+
+            # The obs of done envs are reset
+            obs[step] = next_obs
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
@@ -367,22 +390,22 @@ if __name__ == "__main__":
             actions[step] = action
             logprobs[step] = logprob
 
-            print(iteration, step, action)
+            # print(iteration, step, action)
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, rewards[step], next_done, info = envs.step(action)
-            # if 0 <= step <= 2:
-            for idx, d in enumerate(next_done):
-                if d:
-                    episodic_return = info["r"][idx].item()
-                    print(f"global_step={global_step}, episodic_return={episodic_return}")
-                    writer.add_scalar("charts/episodic_return", episodic_return, global_step)
-                    writer.add_scalar("charts/episodic_length", info["l"][idx], global_step)
-                    if "consecutive_successes" in info:  # ShadowHand and AllegroHand metric
-                        writer.add_scalar(
-                            "charts/consecutive_successes", info["consecutive_successes"].item(), global_step
-                        )
-                    break
+            if 0 <= step <= 2:
+                for idx, d in enumerate(next_done):
+                    if d:
+                        episodic_return = info["r"][idx].item()
+                        print(f"global_step={global_step}, episodic_return={episodic_return}")
+                        writer.add_scalar("charts/episodic_return", episodic_return, global_step)
+                        writer.add_scalar("charts/episodic_length", info["l"][idx], global_step)
+                        if "consecutive_successes" in info:  # ShadowHand and AllegroHand metric
+                            writer.add_scalar(
+                                "charts/consecutive_successes", info["consecutive_successes"].item(), global_step
+                            )
+                        break
 
         # bootstrap value if not done
         with torch.no_grad():
