@@ -1,10 +1,12 @@
 from isaacgym import gymapi
 import torch
-import gymtorch._C as gt  # This will import our compiled C++ module
+import gymtorch._C as gt  # This will import the compiled C++ module
 
-def create_context(device='cuda:0'):
+
+def create_context(device="cuda:0"):
     """Force PyTorch to create a primary CUDA context on the specified device"""
     torch.zeros([1], device=device)
+
 
 def wrap_tensor(gym_tensor, offsets=None, counts=None):
     data = gym_tensor.data_ptr
@@ -16,6 +18,7 @@ def wrap_tensor(gym_tensor, offsets=None, counts=None):
     if counts is None:
         counts = shape
     return gt.wrap_tensor_impl(data, device, dtype, shape, offsets, counts)
+
 
 def torch2gym_dtype(torch_dtype):
     if torch_dtype == torch.float32:
@@ -31,6 +34,7 @@ def torch2gym_dtype(torch_dtype):
     else:
         raise Exception("Unsupported Gym tensor dtype")
 
+
 def torch2gym_device(torch_device):
     if torch_device.type == "cpu":
         return -1
@@ -38,6 +42,7 @@ def torch2gym_device(torch_device):
         return torch_device.index
     else:
         raise Exception("Unsupported Gym tensor device")
+
 
 def unwrap_tensor(torch_tensor):
     if not torch_tensor.is_contiguous():

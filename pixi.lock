@@ -2100,7 +2100,7 @@ packages:
   name: physhoi
   version: 0.1.0
   path: .
-  sha256: 6392f23ece30d311add4e777f2c321388303254a04f5968438ba65d722043d37
+  sha256: 00723940c8dc040537e79cbf8a6d1250dabc536e1918284c01a7b20b2337a766
   requires_dist:
   - gym==0.23.1
   requires_python: '>=3.8,<3.9'

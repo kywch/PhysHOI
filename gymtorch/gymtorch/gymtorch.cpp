@@ -8,7 +8,7 @@
 //
 
 //
-// Known to work with PyTorch 1.4.0 through 1.7.0
+// Known to work with PyTorch 1.4.0 through 2.3.0
 //
 
 #include "GymTensor.h"

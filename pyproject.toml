@@ -49,7 +49,7 @@ physhoi = { path = ".", editable = true }
 test_deps = "python -c 'import isaacgym, torch, rl_games; print(torch.cuda.is_available())'"
 
 # build gymtorch here, so that vscode debugging can be used
-build_gymtorch = "python setup.py clean; python setup.py develop"
+build_gymtorch = "cd gymtorch; python setup.py clean; python setup.py develop"
 
 [tool.pixi.activation]
 scripts = ["env_setup.sh"]
