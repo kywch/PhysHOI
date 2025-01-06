@@ -128,6 +128,8 @@ class Args:
     """the scale factor applied to the reward during training"""
     # record_video_step_frequency: int = 1464
     # """the frequency at which to record the videos"""
+    save_freq: int = 300 if not DEBUG else 5
+    """the frequency at which to save the checkpoints"""
 
     # to be filled in runtime
     batch_size: int = 0
@@ -301,6 +303,24 @@ class Agent(nn.Module):
 #         return obs["obs"]
 
 
+def seed_everything(args):
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    os.environ['PYTHONHASHSEED'] = str(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    if args.torch_deterministic:
+        # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
+        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.use_deterministic_algorithms(True)
+    else:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
+
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -319,28 +339,15 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-    writer = SummaryWriter(f"runs/{run_name}")
+    save_dir = f"runs/{run_name}"
+    writer = SummaryWriter(save_dir)
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
     # TRY NOT TO MODIFY: seeding
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    os.environ['PYTHONHASHSEED'] = str(args.seed)
-    torch.cuda.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    if args.torch_deterministic:
-        # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-        torch.use_deterministic_algorithms(True)
-    else:
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
+    seed_everything(args)
 
     # env setup
     envs = make_env(args)
@@ -484,6 +491,9 @@ if __name__ == "__main__":
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
 
+        if iteration % args.save_freq == 0:
+            torch.save(agent.state_dict(), f"{save_dir}/agent_{iteration:05d}.pth")
+
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
@@ -497,3 +507,6 @@ if __name__ == "__main__":
 
     # envs.close()
     writer.close()
+    
+    # save the final agent
+    torch.save(agent.state_dict(), f"{save_dir}/agent_{iteration:05d}.pth")
