@@ -176,8 +176,8 @@ class PhysHOIAgent(physhoi_players.PhysHOIAgent):
         # We save it to the checkpoint to prevent overriding the "best ever" checkpoint upon experiment restart
         state_dict['last_mean_rewards'] = self.last_mean_rewards
 
-        env_state = self.unwrapped_env.get_env_state()
-        state_dict['env_state'] = env_state
+        # env_state = self.unwrapped_env.get_env_state()
+        # state_dict['env_state'] = env_state
 
         # Save the checkpoint
         torch.save(state_dict, file_path)
