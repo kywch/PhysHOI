@@ -18,8 +18,12 @@ class VecTaskWrapper:
         self.num_actions = task.num_actions
 
         self.obs_space = spaces.Box(np.ones(self.num_obs) * -np.Inf, np.ones(self.num_obs) * np.Inf)
-        self.state_space = spaces.Box(np.ones(self.num_states) * -np.Inf, np.ones(self.num_states) * np.Inf)
-        self.act_space = spaces.Box(np.ones(self.num_actions) * -1., np.ones(self.num_actions) * 1.)
+        self.state_space = spaces.Box(
+            np.ones(self.num_states) * -np.Inf, np.ones(self.num_states) * np.Inf
+        )
+        self.act_space = spaces.Box(
+            np.ones(self.num_actions) * -1.0, np.ones(self.num_actions) * 1.0
+        )
 
         self.clip_obs = clip_observations
         self.clip_actions = clip_actions
@@ -28,7 +32,7 @@ class VecTaskWrapper:
         print("RL device: ", rl_device)
 
         # RLGPU env wrapper
-        self.use_global_obs = (self.task.num_states > 0)
+        self.use_global_obs = self.task.num_states > 0
 
         self.full_state = {}
         self.full_state["obs"] = self.reset()
@@ -36,7 +40,9 @@ class VecTaskWrapper:
             self.full_state["states"] = self.task.get_state()
 
         # AMP-related
-        self._amp_obs_space = spaces.Box(np.ones(task.get_num_amp_obs()) * -np.Inf, np.ones(task.get_num_amp_obs()) * np.Inf)
+        self._amp_obs_space = spaces.Box(
+            np.ones(task.get_num_amp_obs()) * -np.Inf, np.ones(task.get_num_amp_obs()) * np.Inf
+        )
 
     @property
     def observation_space(self):
@@ -61,6 +67,14 @@ class VecTaskWrapper:
     @property
     def num_obs(self):
         return self.num_observations
+
+    @property
+    def gym(self):
+        return self.task.gym
+
+    @property
+    def viewer(self):
+        return self.task.viewer
 
     def fetch_amp_obs_demo(self, num_samples):
         return self.task.fetch_amp_obs_demo(num_samples)

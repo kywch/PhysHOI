@@ -20,7 +20,7 @@ from physhoi.norlg_learning.utils import RLGPUAlgoObserver, DefaultRewardsShaper
 from physhoi.norlg_learning.env import create_rlgpu_env, RLGPUEnvWrapper
 from physhoi.norlg_learning.network import PhysHOINetworkBuilder, PhysHOIModelBuilder
 
-RUN_EVAL = False
+RUN_EVAL = True
 RUN_RLG = False
 
 
@@ -35,18 +35,18 @@ class Runner:
         pass
 
     def load(self, yaml_conf):
-        self.default_config = yaml_conf['params']
+        self.default_config = yaml_conf["params"]
         self.load_config(copy.deepcopy(self.default_config))
 
         # if 'experiment_config' in yaml_conf:
         #     self.exp_config = yaml_conf['experiment_config']
 
     def load_config(self, params):  # params = cfg_train
-        self.seed = params.get('seed', None)
+        self.seed = params.get("seed", None)
 
-        self.algo_params = params['algo']
-        self.algo_name = self.algo_params['name']
-        self.load_check_point = params['load_checkpoint']
+        self.algo_params = params["algo"]
+        self.algo_name = self.algo_params["name"]
+        self.load_check_point = params["load_checkpoint"]
         self.exp_config = None
 
         if self.seed:
@@ -55,16 +55,16 @@ class Runner:
             np.random.seed(self.seed)
 
         if self.load_check_point:
-            print('Found checkpoint')
-            print(params['load_path'])
-            self.load_path = params['load_path']
+            print("Found checkpoint")
+            print(params["load_path"])
+            self.load_path = params["load_path"]
 
         # self.model is actually model builder, not the model itself
         self.model = self.make_model_builder(params)
-        self.config = copy.deepcopy(params['config'])
-        
-        self.config['reward_shaper'] = DefaultRewardsShaper(**self.config['reward_shaper'])
-        self.config['network'] = self.model
+        self.config = copy.deepcopy(params["config"])
+
+        self.config["reward_shaper"] = DefaultRewardsShaper(**self.config["reward_shaper"])
+        self.config["network"] = self.model
 
     def make_model_builder(self, params):
         # network_builder = physhoi_network_builder.PhysHOIBuilder()
@@ -74,21 +74,21 @@ class Runner:
         return model_builder
 
     def run(self, args):
-        if 'checkpoint' in args and args['checkpoint'] is not None:
-            if len(args['checkpoint']) > 0:
-                self.load_path = args['checkpoint']
+        if "checkpoint" in args and args["checkpoint"] is not None:
+            if len(args["checkpoint"]) > 0:
+                self.load_path = args["checkpoint"]
 
-        if args['train']:
+        if args["train"]:
             self.run_train()
 
-        elif args['play']:
-            print('Started to play')
+        elif args["play"]:
+            print("Started to play")
             player = self.create_player()
             player.restore(self.load_path)
             player.run()
 
         else:
-            raise ValueError(f'Unknown command: {args}')
+            raise ValueError(f"Unknown command: {args}")
 
     # "player" seems to be inference-only mode
     def create_player(self):
@@ -98,18 +98,18 @@ class Runner:
             return physhoi_players.PhysHOIPlayerContinuous(self.config, self.env_creator)
 
     def run_train(self):
-        print('Started to train')
+        print("Started to train")
         self.reset()
         self.load_config(self.default_config)
 
         if self.algo_observer is None:
             self.algo_observer = RLGPUAlgoObserver()
-        self.config['algo_observer'] = self.algo_observer
+        self.config["algo_observer"] = self.algo_observer
 
         if RUN_RLG:
             # for the org_physhoi_agent
-            self.config['features'] = {"observer": self.algo_observer}
-            agent = org_physhoi_agent.PhysHOIAgent(base_name='run', config=self.config)
+            self.config["features"] = {"observer": self.algo_observer}
+            agent = org_physhoi_agent.PhysHOIAgent(base_name="run", config=self.config)
 
         else:
             vec_env = self.env_creator()
@@ -126,7 +126,7 @@ class Runner:
         agent.train()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     set_np_formatting()
     args = get_args()
 
@@ -134,11 +134,12 @@ if __name__ == '__main__':
         # CLI arguments for eval
         args.test = True
         args.task = "PhysHOI_BallPlay"
-        args.num_envs = 4
+        args.num_envs = 1
         args.cfg_env = "physhoi/data/cfg/physhoi.yaml"
         args.cfg_train = "physhoi/data/cfg/train/rlg/physhoi.yaml"
         args.motion_file = "physhoi/data/motions/BallPlay/backdribble.pt"
-        args.checkpoint = "physhoi/data/models/backdribble/nn/PhysHOI.pth"
+        # args.checkpoint = "physhoi/data/models/backdribble/nn/PhysHOI.pth"
+        args.checkpoint = "phys.pt"
 
     else:
         # CLI arguments for train
@@ -161,15 +162,12 @@ if __name__ == '__main__':
 
     # config processing
     cfg, cfg_train, logdir = load_cfg(args)
-    cfg['env']['motion_file'] = args.motion_file
+    cfg["env"]["motion_file"] = args.motion_file
 
     env_creator = lambda **kwargs: create_rlgpu_env(args, cfg, cfg_train, **kwargs)
 
     # Create and register the env creator with args, cfg, cfg_train
-    env_configurations.register('rlgpu', {
-        'env_creator': env_creator,
-        'vecenv_type': 'RLGPU'}
-    )
+    env_configurations.register("rlgpu", {"env_creator": env_creator, "vecenv_type": "RLGPU"})
 
     runner = Runner(env_creator)
     runner.load(cfg_train)

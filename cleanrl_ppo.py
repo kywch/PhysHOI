@@ -141,18 +141,15 @@ class Args:
 
 
 # NOTE: See gymutil.parse_arguments for isaacgym args. Not using it here to simplify.
-def parse_sim_params(args, cfg, sim_timestep=1.0 / 60.0):
+def parse_sim_params(args, cfg, sim_timestep=1.0 / 60.0, use_gpu=True):
     # initialize sim
     sim_params = gymapi.SimParams()
     sim_params.dt = sim_timestep  # configs or args?
 
     # Use gpu and physx
     assert torch.cuda.is_available(), "CUDA is not available"
-    sim_params.use_gpu_pipeline = True
-    sim_params.physx.use_gpu = True
-    if DEBUG:
-        sim_params.use_gpu_pipeline = False
-        sim_params.physx.use_gpu = False
+    sim_params.use_gpu_pipeline = use_gpu
+    sim_params.physx.use_gpu = use_gpu
     sim_params.physx.max_gpu_contact_pairs = 8 * 1024 * 1024
 
     # NOTE: the default sim options are provided in cfg
@@ -166,14 +163,14 @@ def parse_sim_params(args, cfg, sim_timestep=1.0 / 60.0):
 
     return sim_params
 
-def make_env(args):
-    # Assert device
-    assert torch.cuda.is_available(), "CUDA is not available"
-    rl_device = "cuda:" + str(args.device_id)
-    if DEBUG:
-        rl_device = "cpu"
 
-    with open(args.env_cfg_file, 'r') as f:
+def make_env(args, use_gpu=True):
+    rl_device = "cpu"
+    if use_gpu:
+        assert torch.cuda.is_available(), "CUDA is not available"
+        rl_device = "cuda:" + str(args.device_id)
+
+    with open(args.env_cfg_file, "r") as f:
         cfg = yaml.load(f, Loader=yaml.SafeLoader)
 
     assert "env" in cfg, "env is not set in the config file"
@@ -182,39 +179,31 @@ def make_env(args):
     # Fill in the env config
     cfg["env"]["numEnvs"] = args.num_envs
     cfg["env"]["motion_file"] = args.motion_file
-    sim_params = parse_sim_params(args, cfg)
+    sim_params = parse_sim_params(args, cfg, use_gpu=use_gpu)
 
     # Use gpu and physx by default
     task = PhysHOI_BallPlay(
         cfg=cfg,
         sim_params=sim_params,
         physics_engine=gymapi.SIM_PHYSX,
-        device_type=rl_device,  #"cuda" if torch.cuda.is_available() and args.cuda else "cpu",
+        device_type=rl_device,  # "cuda" if torch.cuda.is_available() and args.cuda else "cpu",
         device_id=args.device_id,
-        headless=args.headless
+        headless=args.headless,
     )
 
     # add wrappers
-
-    # envs = VecTaskPythonWrapper(task, rl_device, clip_observations=np.inf, clip_actions=1.0)
-    # print('num_envs: {:d}'.format(envs.num_envs))
-    # print('num_actions: {:d}'.format(envs.num_actions))
-    # print('num_obs: {:d}'.format(envs.num_obs))
-    # print('num_states: {:d}'.format(envs.num_states))
-
-    # envs = RLGPUEnvWrapper(envs)
-
     envs = VecTaskWrapper(task, rl_device, clip_observations=np.inf, clip_actions=1.0)
-    print('num_envs: {:d}'.format(envs.num_envs))
-    print('num_actions: {:d}'.format(envs.num_actions))
-    print('num_obs: {:d}'.format(envs.num_obs))
-    print('num_states: {:d}'.format(envs.num_states))
-
+    print("num_envs: {:d}".format(envs.num_envs))
+    print("num_actions: {:d}".format(envs.num_actions))
+    print("num_obs: {:d}".format(envs.num_obs))
+    print("num_states: {:d}".format(envs.num_states))
 
     envs = RecordEpisodeStatisticsTorch(envs, torch.device(rl_device))
     envs.single_action_space = envs.action_space
     envs.single_observation_space = envs.observation_space
-    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+    assert isinstance(
+        envs.single_action_space, gym.spaces.Box
+    ), "only continuous action space is supported"
 
     return envs
 
@@ -230,10 +219,16 @@ class RecordEpisodeStatisticsTorch(gym.Wrapper):
     def reset(self, env_ids=None):
         obs = self.env.reset(env_ids)
         if env_ids is None:
-            self.episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
+            self.episode_returns = torch.zeros(
+                self.num_envs, dtype=torch.float32, device=self.device
+            )
             self.episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
-            self.returned_episode_returns = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
-            self.returned_episode_lengths = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
+            self.returned_episode_returns = torch.zeros(
+                self.num_envs, dtype=torch.float32, device=self.device
+            )
+            self.returned_episode_lengths = torch.zeros(
+                self.num_envs, dtype=torch.int32, device=self.device
+            )
         else:
             self.episode_returns[env_ids] = 0
             self.episode_lengths[env_ids] = 0
@@ -298,21 +293,16 @@ class Agent(nn.Module):
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
-# class ExtractObsWrapper(gym.ObservationWrapper):
-#     def observation(self, obs):
-#         return obs["obs"]
-
-
 def seed_everything(args):
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    os.environ['PYTHONHASHSEED'] = str(args.seed)
+    os.environ["PYTHONHASHSEED"] = str(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     if args.torch_deterministic:
         # refer to https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
-        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
         torch.use_deterministic_algorithms(True)
@@ -343,22 +333,27 @@ if __name__ == "__main__":
     writer = SummaryWriter(save_dir)
     writer.add_text(
         "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+        "|param|value|\n|-|-|\n%s"
+        % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
 
     # TRY NOT TO MODIFY: seeding
     seed_everything(args)
 
     # env setup
-    envs = make_env(args)
+    envs = make_env(args, use_gpu=args.cuda and not DEBUG)
     device = envs.device
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape, dtype=torch.float).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape, dtype=torch.float).to(device)
+    obs = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_observation_space.shape, dtype=torch.float
+    ).to(device)
+    actions = torch.zeros(
+        (args.num_steps, args.num_envs) + envs.single_action_space.shape, dtype=torch.float
+    ).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs), dtype=torch.float).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs), dtype=torch.float).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs), dtype=torch.float).to(device)
@@ -410,7 +405,9 @@ if __name__ == "__main__":
                         writer.add_scalar("charts/episodic_length", info["l"][idx], global_step)
                         if "consecutive_successes" in info:  # ShadowHand and AllegroHand metric
                             writer.add_scalar(
-                                "charts/consecutive_successes", info["consecutive_successes"].item(), global_step
+                                "charts/consecutive_successes",
+                                info["consecutive_successes"].item(),
+                                global_step,
                             )
                         break
 
@@ -427,7 +424,9 @@ if __name__ == "__main__":
                     nextnonterminal = 1.0 - dones[t + 1]
                     nextvalues = values[t + 1]
                 delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values[t]
-                advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                advantages[t] = lastgaelam = (
+                    delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                )
             returns = advantages + values
 
         # flatten the batch
@@ -446,7 +445,9 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+                _, newlogprob, entropy, newvalue = agent.get_action_and_value(
+                    b_obs[mb_inds], b_actions[mb_inds]
+                )
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -458,11 +459,15 @@ if __name__ == "__main__":
 
                 mb_advantages = b_advantages[mb_inds]
                 if args.norm_adv:
-                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (
+                        mb_advantages.std() + 1e-8
+                    )
 
                 # Policy loss
                 pg_loss1 = -mb_advantages * ratio
-                pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
+                pg_loss2 = -mb_advantages * torch.clamp(
+                    ratio, 1 - args.clip_coef, 1 + args.clip_coef
+                )
                 pg_loss = torch.max(pg_loss1, pg_loss2).mean()
 
                 # Value loss
@@ -492,7 +497,9 @@ if __name__ == "__main__":
                 break
 
         if iteration % args.save_freq == 0:
-            torch.save(agent.state_dict(), f"{save_dir}/agent_{iteration:05d}.pth")
+            file_name = f"{save_dir}/agent_{iteration:05d}.pth"
+            print(f"Saving checkpoint to {file_name}")
+            torch.save(agent.state_dict(), file_name)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
@@ -507,6 +514,8 @@ if __name__ == "__main__":
 
     # envs.close()
     writer.close()
-    
+
     # save the final agent
-    torch.save(agent.state_dict(), f"{save_dir}/agent_{iteration:05d}.pth")
+    file_name = f"{save_dir}/agent_{iteration:05d}.pth"
+    print(f"The final checkpoint is saved to {file_name}")
+    torch.save(agent.state_dict(), file_name)

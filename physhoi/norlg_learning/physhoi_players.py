@@ -43,19 +43,19 @@ class PhysHOIAgent:
         self.config = config
         # self.env_name = self.config['env_name']
         # self.env_config = self.config.get('env_config', {})
-        self.env_info = self.config.get('env_info')
-        self.clip_actions = config.get('clip_actions', True)
+        self.env_info = self.config.get("env_info")
+        self.clip_actions = config.get("clip_actions", True)
 
         self.env = env
         if self.env_info is None:
             # self.env = env_creator(**self.env_config)  # self.create_env()
             self.env_info = get_env_info(self.env)
 
-        self.value_size = self.env_info.get('value_size', 1)
-        self.action_space = self.env_info['action_space']
-        self.num_agents = self.env_info['agents']
+        self.value_size = self.env_info.get("value_size", 1)
+        self.action_space = self.env_info["action_space"]
+        self.num_agents = self.env_info["agents"]
 
-        self.observation_space = self.env_info['observation_space']
+        self.observation_space = self.env_info["observation_space"]
         if isinstance(self.observation_space, gym.spaces.Dict):
             self.obs_shape = {}
             for k, v in self.observation_space.spaces.items():
@@ -64,44 +64,44 @@ class PhysHOIAgent:
             self.obs_shape = self.observation_space.shape
 
         self.states = None
-        self.player_config = self.config.get('player', {})
+        self.player_config = self.config.get("player", {})
         self.batch_size = 1
         # self.has_central_value = self.config.get('central_value_config') is not None
-        self.render_env = self.player_config.get('render', False)
-        self.games_num = self.player_config.get('games_num', 15)
-        self.is_determenistic = self.player_config.get('determenistic', True)
-        self.print_stats = self.player_config.get('print_stats', True)
-        self.render_sleep = self.player_config.get('render_sleep', 0.002)
+        self.render_env = self.player_config.get("render", False)
+        self.games_num = self.player_config.get("games_num", 15)
+        self.is_determenistic = self.player_config.get("determenistic", True)
+        self.print_stats = self.player_config.get("print_stats", True)
+        self.render_sleep = self.player_config.get("render_sleep", 0.002)
         self.max_steps = 108000 // 4
 
         # TODO: check device in config. For now, there is no device nor device_name
         self.use_cuda = True
-        self.device_name = self.config.get('device_name', 'cuda')
+        self.device_name = self.config.get("device_name", "cuda")
         self.device = torch.device(self.device_name)
 
         # from physhoi.learning import common_player
         # common_player.CommonPlayer.__init__(self, config)
-        self.network = config['network']
+        self.network = config["network"]
 
         self._setup_action_space()
         self.mask = [False]
 
-        self.normalize_input = self.config.get('normalize_input', False)
+        self.normalize_input = self.config.get("normalize_input", False)
         # CHECK ME: normalize_value is not used in PhysHOI checkpoints
         self.normalize_value = False  # self.config.get('normalize_value', False)
         self._build_model()
 
         # Adversarial Motion Prior (AMP)-related
-        self._normalize_amp_input = config.get('normalize_amp_input', True)
+        self._normalize_amp_input = config.get("normalize_amp_input", True)
         self._amp_input_mean_std = None
         if self._normalize_amp_input:
-            assert hasattr(self, 'env'), "env is not set"
-            config['amp_input_shape'] = self.env.amp_observation_space.shape
-            self._amp_input_mean_std = RunningMeanStd(config['amp_input_shape']).to(self.device)
-            self._amp_input_mean_std.eval()  
+            assert hasattr(self, "env"), "env is not set"
+            config["amp_input_shape"] = self.env.amp_observation_space.shape
+            self._amp_input_mean_std = RunningMeanStd(config["amp_input_shape"]).to(self.device)
+            self._amp_input_mean_std.eval()
 
     def _setup_action_space(self):
-        self.actions_num = self.action_space.shape[0] 
+        self.actions_num = self.action_space.shape[0]
         self.actions_low = torch.from_numpy(self.action_space.low.copy()).float().to(self.device)
         self.actions_high = torch.from_numpy(self.action_space.high.copy()).float().to(self.device)
 
@@ -109,10 +109,10 @@ class PhysHOIAgent:
         # net_config = self._build_net_config()
         obs_shape = shape_whc_to_cwh(self.obs_shape)
         config = {
-            'actions_num' : self.actions_num,
-            'input_shape' : obs_shape,
+            "actions_num": self.actions_num,
+            "input_shape": obs_shape,
             # 'num_seqs' : self.num_agents  # used for rnn, so not needed
-        } 
+        }
 
         # self._build_net(net_config)
         self.model = self.network.build(config)
@@ -123,7 +123,7 @@ class PhysHOIAgent:
 
         if self.normalize_input:
             self.running_mean_std = RunningMeanStd(obs_shape).to(self.device)
-            self.running_mean_std.eval() 
+            self.running_mean_std.eval()
 
         # if self.normalize_value:
         #     self.value_mean_std = RunningMeanStd((self.value_size,)).to(self.device)
@@ -145,19 +145,19 @@ class PhysHOIAgent:
 
     def get_model_weights(self):
         state_dict = {}
-        state_dict['model'] = self.model.state_dict()
+        state_dict["model"] = self.model.state_dict()
         if self.normalize_input:
-            state_dict['running_mean_std'] = self.running_mean_std.state_dict()
+            state_dict["running_mean_std"] = self.running_mean_std.state_dict()
         if self._normalize_amp_input:
-            state_dict['amp_input_mean_std'] = self._amp_input_mean_std.state_dict()
+            state_dict["amp_input_mean_std"] = self._amp_input_mean_std.state_dict()
         return state_dict
 
     def set_model_weights(self, state_dict):
-        self.model.load_state_dict(state_dict['model'])
+        self.model.load_state_dict(state_dict["model"])
         if self.normalize_input:
-            self.running_mean_std.load_state_dict(state_dict['running_mean_std'])
+            self.running_mean_std.load_state_dict(state_dict["running_mean_std"])
         if self._normalize_amp_input:
-            self._amp_input_mean_std.load_state_dict(state_dict['amp_input_mean_std'])
+            self._amp_input_mean_std.load_state_dict(state_dict["amp_input_mean_std"])
 
     def restore(self, file_path):
         if os.path.exists(file_path):
@@ -184,7 +184,7 @@ class PhysHOIAgent:
 
 class PhysHOIPlayerContinuous(PhysHOIAgent):
     def __init__(self, config, env_creator):
-        env_config = config.get('env_config', {})
+        env_config = config.get("env_config", {})
         env = env_creator(**env_config)
 
         super().__init__(config, env)
@@ -195,20 +195,20 @@ class PhysHOIPlayerContinuous(PhysHOIAgent):
         self.batch_size = obses.size()[0]
         return self.batch_size
 
-    def get_action(self, obs_torch, is_determenistic = False):
+    def get_action(self, obs_torch, is_determenistic=False):
         obs_torch = self._preproc_obs(obs_torch)
         input_dict = {
-            'is_train': False,
-            'prev_actions': None, 
-            'obs' : obs_torch,
-            'rnn_states' : self.states
+            "is_train": False,
+            "prev_actions": None,
+            "obs": obs_torch,
+            "rnn_states": self.states,
         }
 
         with torch.no_grad():
             res_dict = self.model(input_dict)
-        mu = res_dict['mus']
-        action = res_dict['actions']
-        
+        mu = res_dict["mus"]
+        action = res_dict["actions"]
+
         if is_determenistic:
             current_action = mu
         else:
@@ -216,8 +216,10 @@ class PhysHOIPlayerContinuous(PhysHOIAgent):
 
         if not self.clip_actions:
             return current_action
-        
-        return rescale_actions(self.actions_low, self.actions_high, torch.clamp(current_action, -1.0, 1.0))
+
+        return rescale_actions(
+            self.actions_low, self.actions_high, torch.clamp(current_action, -1.0, 1.0)
+        )
 
     def run(self):
         n_games = self.games_num
@@ -242,8 +244,8 @@ class PhysHOIPlayerContinuous(PhysHOIAgent):
             if self.env.task.play_dataset:
                 # play dataset
                 while True:
-                    for t in range(self.env.task.max_episode_length): 
-                        self.env.task.play_dataset_step(t) 
+                    for t in range(self.env.task.max_episode_length):
+                        self.env.task.play_dataset_step(t)
 
             else:
                 # inference
@@ -261,11 +263,11 @@ class PhysHOIPlayerContinuous(PhysHOIAgent):
                     self._post_step(info)
 
                     if render:
-                        self.env.render(mode = 'human')
+                        self.env.render(mode="human")
                         time.sleep(self.render_sleep)
 
                     all_done_indices = done.nonzero(as_tuple=False)
-                    done_indices = all_done_indices[::self.num_agents]
+                    done_indices = all_done_indices[:: self.num_agents]
                     done_count = len(done_indices)
                     games_played += done_count
 
@@ -279,18 +281,25 @@ class PhysHOIPlayerContinuous(PhysHOIAgent):
                         sum_steps += cur_steps
 
                         if self.print_stats:
-                            print('games_played:', games_played, 'reward:', cur_rewards/done_count, 'steps:', cur_steps/done_count)
+                            print(
+                                "games_played:",
+                                games_played,
+                                "reward:",
+                                cur_rewards / done_count,
+                                "steps:",
+                                cur_steps / done_count,
+                            )
 
-                        if batch_size//self.num_agents == 1 or games_played >= n_games:
+                        if batch_size // self.num_agents == 1 or games_played >= n_games:
                             break
-                    
+
                     done_indices = done_indices[:, 0]
 
-        print(n_games, 'games played. Done.')
+        print(n_games, "games played. Done.")
         return
-    
+
     def _post_step(self, info):
-        if (self.env.task.viewer):
+        if self.env.task.viewer:
             self._amp_debug(info)
         return
 

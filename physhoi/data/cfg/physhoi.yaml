@@ -36,13 +36,13 @@ env:
   
   rewardWeights:
     p: 50.
-    r: 50.
-    pv: 0.
-    rv: 0.
+    r: 20.
+    pv: 0.01
+    rv: 0.01
 
     op: 1.
     or: 0.
-    opv: 0.
+    opv: 0.01
     orv: 0.
 
     ig: 20.

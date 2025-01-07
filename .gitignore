@@ -8,3 +8,4 @@ output
 logs
 runs
 wandb
+tests

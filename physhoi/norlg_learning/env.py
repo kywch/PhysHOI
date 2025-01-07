@@ -6,7 +6,6 @@ from physhoi.utils.config import parse_sim_params
 
 
 def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
-
     sim_params = parse_sim_params(args, cfg, cfg_train)
 
     # create native task and pass custom config
@@ -24,19 +23,24 @@ def create_rlgpu_env(args, cfg, cfg_train, **kwargs):
             physics_engine=args.physics_engine,
             device_type=args.device,
             device_id=device_id,
-            headless=args.headless
+            headless=args.headless,
         )
 
     except NameError as e:
         print(e)
 
-    env = VecTaskPythonWrapper(task, rl_device, cfg_train.get("clip_observations", np.inf), cfg_train.get("clip_actions", 1.0))
+    env = VecTaskPythonWrapper(
+        task,
+        rl_device,
+        cfg_train.get("clip_observations", np.inf),
+        cfg_train.get("clip_actions", 1.0),
+    )
 
-    print('num_envs: {:d}'.format(env.num_envs))
-    print('num_actions: {:d}'.format(env.num_actions))
-    print('num_obs: {:d}'.format(env.num_obs))
-    print('num_states: {:d}'.format(env.num_states))
-    
+    print("num_envs: {:d}".format(env.num_envs))
+    print("num_actions: {:d}".format(env.num_actions))
+    print("num_obs: {:d}".format(env.num_obs))
+    print("num_states: {:d}".format(env.num_states))
+
     return env
 
 
@@ -44,7 +48,7 @@ class RLGPUEnvWrapper:
     def __init__(self, env):
         self.env = env
         # pdb.set_trace()
-        self.use_global_obs = (self.env.num_states > 0)
+        self.use_global_obs = self.env.num_states > 0
 
         self.full_state = {}
         self.full_state["obs"] = self.reset()
@@ -98,34 +102,35 @@ class RLGPUEnvWrapper:
 
     def get_env_info(self):
         info = {}
-        info['action_space'] = self.env.action_space
-        info['observation_space'] = self.env.observation_space
-        info['amp_observation_space'] = self.env.amp_observation_space
+        info["action_space"] = self.env.action_space
+        info["observation_space"] = self.env.observation_space
+        info["amp_observation_space"] = self.env.amp_observation_space
 
         if self.use_global_obs:
-            info['state_space'] = self.env.state_space
-            print(info['action_space'], info['observation_space'], info['state_space'])
+            info["state_space"] = self.env.state_space
+            print(info["action_space"], info["observation_space"], info["state_space"])
         else:
-            print(info['action_space'], info['observation_space'])
+            print(info["action_space"], info["observation_space"])
 
         return info
 
+
 def get_env_info(env):
     result_shapes = {}
-    result_shapes['observation_space'] = env.observation_space
-    result_shapes['action_space'] = env.action_space
-    result_shapes['agents'] = 1
-    result_shapes['value_size'] = 1
+    result_shapes["observation_space"] = env.observation_space
+    result_shapes["action_space"] = env.action_space
+    result_shapes["agents"] = 1
+    result_shapes["value_size"] = 1
     if hasattr(env, "get_number_of_agents"):
-        result_shapes['agents'] = env.get_number_of_agents()
-    '''
+        result_shapes["agents"] = env.get_number_of_agents()
+    """
     if isinstance(result_shapes['observation_space'], gym.spaces.dict.Dict):
         result_shapes['observation_space'] = observation_space['observations']
     if isinstance(result_shapes['observation_space'], dict):
         result_shapes['observation_space'] = observation_space['observations']
         result_shapes['state_space'] = observation_space['states']
-    '''
-    if hasattr(env, "value_size"):    
-        result_shapes['value_size'] = env.value_size
+    """
+    if hasattr(env, "value_size"):
+        result_shapes["value_size"] = env.value_size
     print(result_shapes)
     return result_shapes

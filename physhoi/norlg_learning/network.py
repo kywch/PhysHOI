@@ -24,16 +24,16 @@ class PhysHOINetworkBuilder:
 
     class Network(nn.Module):
         def __init__(self, params, **kwargs):
-            actions_num = kwargs.pop('actions_num')
-            input_shape = kwargs.pop('input_shape')
+            actions_num = kwargs.pop("actions_num")
+            input_shape = kwargs.pop("input_shape")
             hidden1, hidden2 = 1024, 512
 
             super().__init__()
 
             # Replace self.load(params)
             # self.is_continuous = True
-            self.units = params['mlp']['units']
-            self.space_config = params['space']['continuous']
+            self.units = params["mlp"]["units"]
+            self.space_config = params["space"]["continuous"]
 
             # Fix the network, to be the same as the original
             # mlp:
@@ -55,15 +55,22 @@ class PhysHOINetworkBuilder:
             )
 
             self.mu = nn.Linear(out_size, actions_num)
-            self.mu_act = nn.Identity()  # self.activations_factory.create(self.space_config['mu_activation']) 
-            self.sigma_act = nn.Identity()  # self.activations_factory.create(self.space_config['sigma_activation']) 
+            self.mu_act = (
+                nn.Identity()
+            )  # self.activations_factory.create(self.space_config['mu_activation'])
+            self.sigma_act = (
+                nn.Identity()
+            )  # self.activations_factory.create(self.space_config['sigma_activation'])
 
-            if self.space_config['learn_sigma']:
+            if self.space_config["learn_sigma"]:
                 self.sigma = nn.Linear(out_size, actions_num)
-                nn.init.constant_(self.sigma.weight, self.space_config['sigma_init']['val'])
+                nn.init.constant_(self.sigma.weight, self.space_config["sigma_init"]["val"])
             else:
-                self.sigma = nn.Parameter(torch.zeros(actions_num, requires_grad=False, dtype=torch.float32), requires_grad=False)
-                nn.init.constant_(self.sigma, self.space_config['sigma_init']['val'])
+                self.sigma = nn.Parameter(
+                    torch.zeros(actions_num, requires_grad=False, dtype=torch.float32),
+                    requires_grad=False,
+                )
+                nn.init.constant_(self.sigma, self.space_config["sigma_init"]["val"])
 
             # Critic network
             self.critic_mlp = nn.Sequential(
@@ -79,8 +86,8 @@ class PhysHOINetworkBuilder:
         # TODO: simplify below
 
         def forward(self, obs_dict):
-            obs = obs_dict['obs']
-            states = obs_dict.get('rnn_states', None)
+            obs = obs_dict["obs"]
+            states = obs_dict.get("rnn_states", None)
 
             actor_outputs = self.eval_actor(obs)
             value = self.eval_critic(obs)
@@ -93,7 +100,7 @@ class PhysHOINetworkBuilder:
             a_out = self.actor_cnn(obs)
             a_out = a_out.contiguous().view(a_out.size(0), -1)
             a_out = self.actor_mlp(a_out)
-                     
+
             # if self.is_discrete:
             #     logits = self.logits(a_out)
             #     return logits
@@ -104,7 +111,7 @@ class PhysHOINetworkBuilder:
 
             # if self.is_continuous:
             mu = self.mu_act(self.mu(a_out))
-            if self.space_config['learn_sigma']:
+            if self.space_config["learn_sigma"]:
                 sigma = self.sigma_act(self.sigma(a_out))
             else:
                 sigma = mu * 0.0 + self.sigma_act(self.sigma)
@@ -113,7 +120,7 @@ class PhysHOINetworkBuilder:
         def eval_critic(self, obs):
             c_out = self.critic_cnn(obs)
             c_out = c_out.contiguous().view(c_out.size(0), -1)
-            c_out = self.critic_mlp(c_out)              
+            c_out = self.critic_mlp(c_out)
             value = self.value_act(self.value(c_out))
             return value
 
@@ -137,13 +144,13 @@ class PhysHOIModelBuilder:
 
         def is_rnn(self):
             return False  # self.a2c_network.is_rnn()
-            
+
         def get_default_rnn_state(self):
             return None  # self.a2c_network.get_default_rnn_state()
 
         def forward(self, input_dict):
-            is_train = input_dict.get('is_train', True)
-            prev_actions = input_dict.get('prev_actions', None)
+            is_train = input_dict.get("is_train", True)
+            prev_actions = input_dict.get("prev_actions", None)
             mu, logstd, value, states = self.a2c_network(input_dict)
             sigma = torch.exp(logstd)
             distr = torch.distributions.Normal(mu, sigma)
@@ -151,28 +158,30 @@ class PhysHOIModelBuilder:
                 entropy = distr.entropy().sum(dim=-1)
                 prev_neglogp = self.neglogp(prev_actions, mu, sigma, logstd)
                 result = {
-                    'prev_neglogp' : torch.squeeze(prev_neglogp),
-                    'values' : value,
-                    'entropy' : entropy,
-                    'rnn_states' : states,
-                    'mus' : mu,
-                    'sigmas' : sigma
-                }                
+                    "prev_neglogp": torch.squeeze(prev_neglogp),
+                    "values": value,
+                    "entropy": entropy,
+                    "rnn_states": states,
+                    "mus": mu,
+                    "sigmas": sigma,
+                }
                 return result
             else:
                 selected_action = distr.sample()
                 neglogp = self.neglogp(selected_action, mu, sigma, logstd)
                 result = {
-                    'neglogpacs' : torch.squeeze(neglogp),
-                    'values' : value,
-                    'actions' : selected_action,
-                    'rnn_states' : states,
-                    'mus' : mu,
-                    'sigmas' : sigma
+                    "neglogpacs": torch.squeeze(neglogp),
+                    "values": value,
+                    "actions": selected_action,
+                    "rnn_states": states,
+                    "mus": mu,
+                    "sigmas": sigma,
                 }
                 return result
 
         def neglogp(self, x, mean, std, logstd):
-            return 0.5 * (((x - mean) / std)**2).sum(dim=-1) \
-                + 0.5 * np.log(2.0 * np.pi) * x.size()[-1] \
+            return (
+                0.5 * (((x - mean) / std) ** 2).sum(dim=-1)
+                + 0.5 * np.log(2.0 * np.pi) * x.size()[-1]
                 + logstd.sum(dim=-1)
+            )

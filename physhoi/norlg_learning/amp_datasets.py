@@ -37,16 +37,16 @@ class PPODataset(Dataset):
         self.device = device
         self.length = self.batch_size // self.minibatch_size
 
-        self.special_names = ['rnn_states']
+        self.special_names = ["rnn_states"]
 
     def update_values_dict(self, values_dict):
-        self.values_dict = values_dict     
+        self.values_dict = values_dict
 
-    def update_mu_sigma(self, mu, sigma):	    
-        start = self.last_range[0]	           
-        end = self.last_range[1]	
-        self.values_dict['mu'][start:end] = mu	
-        self.values_dict['sigma'][start:end] = sigma 
+    def update_mu_sigma(self, mu, sigma):
+        start = self.last_range[0]
+        end = self.last_range[1]
+        self.values_dict["mu"][start:end] = mu
+        self.values_dict["sigma"][start:end] = sigma
 
     def __len__(self):
         return self.length
@@ -56,14 +56,14 @@ class PPODataset(Dataset):
         end = (idx + 1) * self.minibatch_size
         self.last_range = (start, end)
         input_dict = {}
-        for k,v in self.values_dict.items():
+        for k, v in self.values_dict.items():
             if k not in self.special_names and v is not None:
                 if type(v) is dict:
-                    v_dict = { kd:vd[start:end] for kd, vd in v.items() }
+                    v_dict = {kd: vd[start:end] for kd, vd in v.items()}
                     input_dict[k] = v_dict
                 else:
                     input_dict[k] = v[start:end]
-                
+
         return input_dict
 
     def __getitem__(self, idx):
@@ -74,8 +74,8 @@ class AMPDataset(PPODataset):
     def __init__(self, batch_size, minibatch_size, device):
         super().__init__(batch_size, minibatch_size, device)
         self._idx_buf = torch.randperm(batch_size)
-    
-    def update_mu_sigma(self, mu, sigma):	  
+
+    def update_mu_sigma(self, mu, sigma):
         raise NotImplementedError()
 
     def _get_item(self, idx):
@@ -84,11 +84,11 @@ class AMPDataset(PPODataset):
         sample_idx = self._idx_buf[start:end]
 
         input_dict = {}
-        for k,v in self.values_dict.items():
+        for k, v in self.values_dict.items():
             if k not in self.special_names and v is not None:
                 input_dict[k] = v[sample_idx]
-                
-        if (end >= self.batch_size):
+
+        if end >= self.batch_size:
             self._shuffle_idx_buf()
 
         return input_dict
