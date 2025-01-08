@@ -41,7 +41,7 @@ class Args:
     """the number of client threads that process env slices"""
 
     # Checkpoint replay
-    checkpoint: str = "tests/agent_00010.pth"
+    checkpoint: str = "tests/agent_04800.pth"
     """the path to the checkpoint file"""
     play_motion: bool = False
     """whether to play the input motion, instead of replaying the checkpoint"""
@@ -69,6 +69,7 @@ if __name__ == "__main__":
     obs = envs.reset()
     done = False
     done_count = 0
+    episode_return = 0
     for i in range(1, 300):
         action, logprob, _, value = agent.get_action_and_value(obs)
 
@@ -79,6 +80,7 @@ if __name__ == "__main__":
         else:
             obs, reward, done, info = envs.step(action)
             print("Step", i, ", Reward", reward, ", Done", done)
+            episode_return += reward
 
         # save images
         image_name = f"{image_folder}/image_{i:05d}.png"
@@ -86,8 +88,9 @@ if __name__ == "__main__":
 
         if done:
             done_count += 1
-            print("Reset.")
+            print("Episode return:", episode_return[0], ", Resetting...")
             obs = envs.reset()
+            episode_return = 0
 
         if done_count >= 3:
             break

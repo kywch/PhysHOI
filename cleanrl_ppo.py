@@ -76,11 +76,13 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Env/sim-specific arguments
-    env_id: str = "PhysHOI_BallPlay"
-    """the id of the environment"""
+    # env_id: str = "PhysHOI_BallPlay"
+    # """the id of the environment"""
+    motion: str = "walkpick"
+    """the motion to imitate"""
     env_cfg_file: str = "physhoi/data/cfg/physhoi.yaml"
     """the path to the environment configuration file"""
-    motion_file: str = "physhoi/data/motions/BallPlay/backdribble.pt"
+    motion_file_dir: str = "physhoi/data/motions/BallPlay/"
     """the path to the motion file"""
     headless: bool = True
     """whether to run the environment in headless mode"""
@@ -92,9 +94,9 @@ class Args:
     """the number of client threads that process env slices"""
 
     # PPO-specific arguments
-    total_timesteps: int = 100_000_000
+    total_timesteps: int = 500_000_000
     """total timesteps of the experiments"""
-    learning_rate: float = 2e-3
+    learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
     num_envs: int = 2048 if not DEBUG else 32
     """the number of parallel game environments"""
@@ -116,7 +118,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: bool = False
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.0
+    ent_coef: float = 0.0005
     """coefficient of the entropy"""
     vf_coef: float = 5
     """coefficient of the value function"""
@@ -128,7 +130,7 @@ class Args:
     """the scale factor applied to the reward during training"""
     # record_video_step_frequency: int = 1464
     # """the frequency at which to record the videos"""
-    save_freq: int = 300 if not DEBUG else 5
+    save_freq: int = 600 if not DEBUG else 5
     """the frequency at which to save the checkpoints"""
 
     # to be filled in runtime
@@ -178,7 +180,7 @@ def make_env(args, use_gpu=True):
 
     # Fill in the env config
     cfg["env"]["numEnvs"] = args.num_envs
-    cfg["env"]["motion_file"] = args.motion_file
+    cfg["env"]["motion_file"] = args.motion_file_dir + args.motion + ".pt"
     sim_params = parse_sim_params(args, cfg, use_gpu=use_gpu)
 
     # Use gpu and physx by default
@@ -262,21 +264,27 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 # TODO: add normalize input
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, hidden_size=512):
         super().__init__()
+
+        # Learn to walk in 20 min: https://arxiv.org/abs/2208.07860
+        # Used LayerNorm to regularize the critic
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hidden_size)),
+            nn.LayerNorm(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 256)),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
+            nn.LayerNorm(hidden_size),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 1), std=1.0),
+            layer_init(nn.Linear(hidden_size, 1), std=1.0),
         )
+
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 256)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hidden_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, 256)),
+            layer_init(nn.Linear(hidden_size, hidden_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(256, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(hidden_size, np.prod(envs.single_action_space.shape)), std=0.01),
         )
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
@@ -316,7 +324,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"{args.motion}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
