@@ -22,11 +22,13 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Env/sim-specific arguments
-    env_id: str = "PhysHOI_BallPlay"
-    """the id of the environment"""
+    # env_id: str = "PhysHOI_BallPlay"
+    # """the id of the environment"""
+    motion: str = "pass"
+    """the motion to imitate"""
     env_cfg_file: str = "physhoi/data/cfg/physhoi.yaml"
     """the path to the environment configuration file"""
-    motion_file: str = "physhoi/data/motions/BallPlay/backdribble.pt"
+    motion_file_dir: str = "physhoi/data/motions/BallPlay/"
     """the path to the motion file"""
     headless: bool = False
     """whether to run the environment in headless mode"""
@@ -41,7 +43,7 @@ class Args:
     """the number of client threads that process env slices"""
 
     # Checkpoint replay
-    checkpoint: str = "tests/agent_04800.pth"
+    checkpoint: str = "tests/agent_05400.pth"  # f"tests/{motion}.pth"
     """the path to the checkpoint file"""
     play_motion: bool = False
     """whether to play the input motion, instead of replaying the checkpoint"""
@@ -62,8 +64,8 @@ if __name__ == "__main__":
     agent.load_state_dict(agent_weights)
 
     # image save path
-    motion_name = envs.task.motion_file[len("physhoi/data/motions/BallPlay/") : -3]
-    image_folder = "tests/images/" + motion_name
+    # motion_name = envs.task.motion_file[len("physhoi/data/motions/BallPlay/") : -3]
+    image_folder = "tests/images/" + args.motion
     os.makedirs(image_folder, exist_ok=True)
 
     obs = envs.reset()
@@ -75,7 +77,7 @@ if __name__ == "__main__":
 
         if args.play_motion:
             envs.task.play_dataset_step(i)
-            if i >= envs.task.max_episode_length:
+            if (i + 1) >= envs.task.max_episode_length:
                 done_count = 3
         else:
             obs, reward, done, info = envs.step(action)

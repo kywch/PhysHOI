@@ -10,15 +10,15 @@ dependencies = [
     "gym==0.23.1",
 ]
 
-# [system-requirements]
-# cuda = "12.1"
-
 [tool.setuptools]
 packages = ["physhoi"]
 
 [tool.pixi.project]
 channels = ["pytorch", "nvidia", "conda-forge"]
 platforms = ["linux-64"]
+
+[tool.pixi.system-requirements]
+cuda = "12.1"
 
 [tool.pixi.dependencies]
 pip = ">=24.3.1,<25"

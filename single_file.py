@@ -131,15 +131,19 @@ if __name__ == "__main__":
     args = get_args()
 
     if RUN_EVAL:
+        ball_task = "walkpick"
+        
         # CLI arguments for eval
         args.test = True
         args.task = "PhysHOI_BallPlay"
         args.num_envs = 1
         args.cfg_env = "physhoi/data/cfg/physhoi.yaml"
         args.cfg_train = "physhoi/data/cfg/train/rlg/physhoi.yaml"
-        args.motion_file = "physhoi/data/motions/BallPlay/backdribble.pt"
+        args.motion_file = f"physhoi/data/motions/BallPlay/{ball_task}.pt"
+        args.checkpoint = f"physhoi/data/models/{ball_task}/nn/PhysHOI.pth"
+        # args.motion_file = "physhoi/data/motions/BallPlay/backdribble.pt"
         # args.checkpoint = "physhoi/data/models/backdribble/nn/PhysHOI.pth"
-        args.checkpoint = "phys.pt"
+        # args.checkpoint = "phys3.pt"
 
     else:
         # CLI arguments for train
