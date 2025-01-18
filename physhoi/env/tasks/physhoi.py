@@ -36,6 +36,7 @@ import torch
 import gymtorch
 from isaacgym import gymapi
 
+from physhoi import PHYSHOI_ROOT
 from physhoi.env.tasks.base_task import BaseTask
 from physhoi.utils import torch_utils
 
@@ -864,7 +865,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
         self.gym.subscribe_viewer_mouse_event(self.viewer, gymapi.MOUSE_LEFT_BUTTON, "mouse_shoot")
 
     def _load_proj_asset(self):
-        asset_root = "physhoi/data/assets/mjcf/"
+        asset_root = str(PHYSHOI_ROOT / "physhoi/data/assets/mjcf/")
 
         small_asset_file = "block_projectile.urdf"
         # small_asset_file = "ball_medium.urdf"
@@ -880,7 +881,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
         )
 
     def _load_marker_asset(self):
-        asset_root = "physhoi/data/assets/mjcf/"
+        asset_root = str(PHYSHOI_ROOT / "physhoi/data/assets/mjcf/")
         asset_file = "location_marker.urdf"
 
         asset_options = gymapi.AssetOptions()
@@ -894,7 +895,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
         self._marker_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
 
     def _load_target_asset(self):  # smplx
-        asset_root = "physhoi/data/assets/mjcf/"
+        asset_root = str(PHYSHOI_ROOT / "physhoi/data/assets/mjcf/")
         asset_file = "ball.urdf"
 
         asset_options = gymapi.AssetOptions()
@@ -937,7 +938,7 @@ class PhysHOI_BallPlay(Humanoid_SMPLX):
             )
             # gymapi.Vec3(0., 1.0, 1.5))
             h = self.gym.create_texture_from_file(
-                self.sim, "physhoi/data/assets/mjcf/basketball.png"
+                self.sim, str(PHYSHOI_ROOT / "physhoi/data/assets/mjcf/basketball.png")
             )
             self.gym.set_rigid_body_texture(env_ptr, target_handle, 0, gymapi.MESH_VISUAL, h)
 
